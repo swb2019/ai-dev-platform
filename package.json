@@ -1,0 +1,52 @@
+{
+  "name": "ai-dev-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered development platform with security-first architecture",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.2.0",
+    "turbo": "^1.12.0",
+    "typescript": "^5.3.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "keywords": [
+    "ai",
+    "development",
+    "platform",
+    "security",
+    "monorepo",
+    "nextjs",
+    "typescript"
+  ],
+  "author": "AI Dev Platform Team",
+  "license": "MIT"
+}
