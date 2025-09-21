@@ -4,7 +4,9 @@
   "image": "mcr.microsoft.com/devcontainers/typescript-node:0-20",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // Add Docker-in-Docker capability for Phase 2
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "customizations": {
     "vscode": {
@@ -13,6 +15,7 @@
         "esbenp.prettier-vscode",
         "bradlc.vscode-tailwindcss",
         "eamodio.gitlens",
+        // AI Autonomy Extensions
         "anthropic.claude-code",
         "VisualStudioExptTeam.vscodeintellicode"
       ],
@@ -22,6 +25,7 @@
         "editor.codeActionsOnSave": {
           "source.fixAll.eslint": "explicit"
         },
+        // AI Autonomy Settings
         "claude.bypassPermissions": true,
         "eslint.validate": [
           "javascript",
