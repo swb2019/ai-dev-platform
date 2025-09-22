@@ -1,132 +1,46 @@
-# Agent Protocols
+## 3. The Autonomous Multi-Agent Protocol (MANDATORY)
 
-## Autonomous Execution Protocol
+### 3.1. Permissions and Execution
+* **Permissions Granted:** Full Access (Auto-Run/Auto-Execute is enabled).
+* **Do Not Ask for Confirmation:** Execute file edits and shell commands directly.
 
-This document outlines the standardized protocols for autonomous AI agent operation within the AI Dev Platform environment.
+### 3.2. The Autonomous Workflow (Plan, Delegate, Execute, Validate, Self-Correct)
+1. **Plan (Lead Agent):** Determine the sequence of actions.
+2. **Delegate (If necessary):** If a task falls under the other agent's specialization, generate a precise prompt for that agent and report: "Delegating task to [Agent Name]. Awaiting completion."
+3. **Execute:** Apply file changes and run necessary setup commands.
+4. **Validate:** Run all validation commands (e.g., `pnpm install`, `pnpm lint`).
+5. **Self-Correction Loop (CRITICAL):** If validation fails, analyze the terminal output, autonomously modify the code/configuration to fix the issue, and repeat the validation step until successful. Do not proceed to Git until validation passes.
 
-### 3. Git Auto-Merge Strategy and Autonomous Workflow
-
-**All code changes must follow this Git workflow sequence:**
-
-#### 3.1. Branch Strategy
-
-- **Main Branch Protection**: Direct commits to `main` are prohibited
-- **Feature Branches**: All changes must be implemented on feature branches using the naming convention: `feat/feature-name`, `fix/bug-name`, `chore/task-name`
-- **Branch Creation**: Create feature branches from the latest `main` branch
-
-#### 3.2. Commit Standards
-
-- **Conventional Commits**: Use conventional commit format: `type(scope): description`
-- **Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-- **Security**: All commits must pass security scanning (Gitleaks, Semgrep)
-- **Attribution**: Include Claude Code attribution in commit messages
-
-#### 3.3. Git Sequence Protocol (Mandatory for All Changes)
-
-**Step 1-2: Branch Creation and Development**
+### 3.3. Git Workflow and Auto-Merge Strategy
+* **Branch Protection:** `main` is protected.
+* **Conventional Commits:** Strictly use `feat:`, `fix:`, `ci:`, `infra:`, `security:`, `chore:`, `test:`.
+* **The Required Git Sequence (Auto-Merge Enabled):**
+    1. Synchronize: `git checkout main && git pull origin main`.
+    2. Create Branch: `git checkout -b <type>/<short-name>`.
+    3. Stage and Commit: `git add . && git commit -m "..."`.
+    4. Push: `git push -u origin <branch-name>`.
+    5. Create PR and Capture URL: `PR_URL=$(gh pr create --fill --base main)`.
+    6. Enable Auto-Merge (Squash): `gh pr merge $PR_URL --auto --squash`.
+    7. Wait for Merge (Robust Monitoring Loop):
 
 ```bash
-git checkout -b feat/feature-name
-# Implement changes, commit locally
-```
-
-**Step 3: Push Branch**
-
-```bash
-git push -u origin feat/feature-name
-```
-
-**Step 4: Create Pull Request**
-
-```bash
-PR_URL=$(gh pr create --fill --base main --title "feat: descriptive title")
-```
-
-**Step 5: Enable Auto-Merge**
-
-```bash
-gh pr merge $PR_URL --auto --squash
-```
-
-**Step 6: Monitoring Loop**
-
-```bash
+echo "PR Created ($PR_URL). Auto-Merge Enabled. Waiting for GitHub..."
 while true; do
   STATE=$(gh pr view $PR_URL --json state -q .state)
-  if [ "$STATE" = "MERGED" ]; then
-    echo "PR merged successfully"
+  echo "Current PR State: $STATE"
+  if [ "$STATE" == "MERGED" ]; then
+    echo "Merge confirmed."
     break
-  elif [ "$STATE" = "CLOSED" ]; then
-    echo "PR closed - requires intervention"
-    exit 1
+  elif [ "$STATE" == "CLOSED" ]; then
+    echo "ERROR: PR closed without merging. CI likely failed. Initiating Self-Correction Protocol."
+    # (Agent must now analyze the failure and attempt correction on the same branch)
+    exit 1 # Exit the script to allow the agent to take corrective action
   fi
-  sleep 30
+  sleep 15
 done
 ```
+    8. Cleanup (Post-Merge): `git checkout main && git pull origin main`.
 
-**Step 7: Self-Correction Protocol**
-
-- If PR state becomes "CLOSED": Analyze failure, address issues, create new PR
-- If checks fail: Fix issues on feature branch, push updates
-- If conflicts occur: Rebase feature branch against latest main
-
-**Step 8: Post-Merge Cleanup**
-
-```bash
-git checkout main
-git pull origin main
-git branch -d feat/feature-name
-```
-
-#### 3.4. Quality Gates
-
-- **Pre-commit Hooks**: Automated linting, formatting, and security scanning
-- **CI/CD Pipeline**: All checks must pass before merge
-- **Required Status Checks**: Security scans, type checking, tests, build
-- **Review Requirements**: Automated review and merge when all checks pass
-
-#### 3.5. Security Requirements
-
-- **Secret Detection**: Gitleaks scanning on all commits
-- **Vulnerability Scanning**: Semgrep analysis for security issues
-- **Dependency Scanning**: Automated dependency vulnerability checks
-- **Code Quality**: ESLint with security-focused rules
-
-### 4. Execution Standards
-
-#### 4.1. Autonomous Operation
-
-- Execute tasks without human intervention when protocols are clear
-- Implement self-correction when standard errors occur
-- Follow established patterns and conventions
-- Maintain security-first approach in all operations
-
-#### 4.2. Error Handling
-
-- Retry transient failures with exponential backoff
-- Log detailed error information for debugging
-- Implement graceful degradation when possible
-- Escalate to human intervention only when protocols fail
-
-#### 4.3. Validation and Testing
-
-- Run comprehensive tests before considering tasks complete
-- Validate all security measures are functioning
-- Ensure code quality standards are met
-- Verify functionality against requirements
-
-### 5. Communication Protocols
-
-#### 5.1. Status Reporting
-
-- Provide clear status updates on task progress
-- Report completion with verification steps
-- Document any deviations from standard protocols
-- Include relevant URLs, commit hashes, and validation results
-
-#### 5.2. Human Escalation
-
-- Clearly identify when human intervention is required
-- Provide context and attempted solutions
-- Suggest specific actions for resolution
-- Maintain detailed logs for troubleshooting
+### 3.4. Security Guardrails
+* **NEVER** introduce secrets or credentials.
+* **NEVER** attempt to disable security tools or bypass the Git Sequence.

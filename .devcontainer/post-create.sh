@@ -1,91 +1,154 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# --- Helper Functions ---
-# Function to run commands with sudo if available and needed (DevContainers usually have passwordless sudo)
-run_cmd() {
-    if [ "$(id -u)" != "0" ] && command -v sudo &> /dev/null; then
-        sudo "$@"
-    else
-        "$@"
-    fi
+APT_UPDATED=false
+
+log() {
+  printf '[post-create] %s\n' "$1"
 }
 
-# --- Security Tools Installation ---
-echo "Installing Security Tools..."
+ensure_command() {
+  local cmd="$1"
+  local pkg="$2"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    return
+  fi
 
-# 1. Ensure dependencies (pip, curl) are installed.
-if ! command -v pip3 &> /dev/null || ! command -v curl &> /dev/null; then
-    echo "Installing python3-pip and curl..."
-    # Ensure the package list is updated before installation
-    if ! apt-get update; then
-        echo "Warning: apt-get update failed. Attempting to install dependencies anyway."
-    fi
-    run_cmd apt-get install -y python3-pip curl
-fi
+  log "Installing dependency: $pkg"
 
-# 2. Install Semgrep (Install globally using pip with sudo if necessary)
-echo "Installing Semgrep..."
-if [ "$(id -u)" != "0" ] && command -v sudo &> /dev/null; then
-    sudo pip3 install semgrep
-else
-    pip3 install semgrep
-fi
-
-# 3. Install Gitleaks (Architecture aware)
-echo "Installing Gitleaks..."
-GITLEAKS_VERSION="8.18.4" # Use the latest stable version
-ARCH=$(uname -m)
-if [ "$ARCH" = "x86_64" ]; then
-    GITLEAKS_ARCH="x64"
-elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    GITLEAKS_ARCH="arm64"
-else
-    echo "Unsupported architecture: $ARCH"
-    exit 1
-fi
-
-curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${GITLEAKS_ARCH}.tar.gz" | tar xz
-
-# Move to path
-run_cmd mv gitleaks /usr/local/bin/
-run_cmd chmod +x /usr/local/bin/gitleaks
-
-# --- Git Configuration Override and Safety ---
-echo "Enforcing Git configuration and safety for Linux environment..."
-# Unset potentially conflicting credential helpers and ensure workspace safety.
-# We apply settings globally for the primary user ('node' if it exists, otherwise the current user).
-
-# Determine the primary user to configure
-if id "node" &>/dev/null; then
-    PRIMARY_USER="node"
-else
-    PRIMARY_USER=$(whoami)
-fi
-
-# Function to run configuration commands as the primary user
-# Using 'sudo -u' as it is generally available in DevContainers
-run_as_user() {
-    # Check if we are already the primary user
-    if [ "$(whoami)" = "$PRIMARY_USER" ]; then
-        "$@"
-    # Check if sudo is available and we are root/able to switch user
-    elif command -v sudo &>/dev/null; then
-        # Use sudo -u to run the command as the primary user. Use 'env' to preserve PATH.
-        sudo -u "$PRIMARY_USER" env PATH="$PATH" "$@"
+  if [ "$APT_UPDATED" = false ]; then
+    if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+      sudo apt-get update -y >/dev/null
     else
-        echo "Warning: Cannot switch to $PRIMARY_USER. Running as $(whoami)."
-        "$@"
+      apt-get update -y >/dev/null
     fi
+    APT_UPDATED=true
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo apt-get install -y "$pkg" >/dev/null
+  else
+    apt-get install -y "$pkg" >/dev/null
+  fi
 }
 
-# Apply configurations
-# Unset conflicting helpers (e.g., from Windows host)
-run_as_user git config --global --unset-all credential.helper || true
-# Mark workspace as safe to prevent dubious ownership errors
-run_as_user git config --global --add safe.directory /workspaces/ai-dev-platform || true
-# Ensure 'gh' is configured as the credential helper for the Linux environment
-# This relies on 'gh auth login' having been completed previously and the token being available.
-run_as_user gh auth setup-git || true
+install_pnpm() {
+  if command -v pnpm >/dev/null 2>&1; then
+    log "pnpm already installed"
+    return
+  fi
 
-echo "Post-create command finished."
+  log "Installing pnpm@9 globally"
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo npm install -g pnpm@9 >/dev/null
+  else
+    npm install -g pnpm@9 >/dev/null
+  fi
+}
+
+install_semgrep() {
+  if command -v semgrep >/dev/null 2>&1; then
+    log "Semgrep already installed"
+    return
+  fi
+
+  log "Installing Semgrep"
+
+  ensure_command python3 python3
+  ensure_command pip3 python3-pip
+
+  local pip_args=(--upgrade --no-cache-dir)
+  if python3 -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then
+    pip_args+=(--break-system-packages)
+  fi
+
+  pip_args+=(semgrep)
+
+  local install_cmd=(python3 -m pip install "${pip_args[@]}")
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo "${install_cmd[@]}" >/dev/null
+  else
+    "${install_cmd[@]}" >/dev/null
+  fi
+}
+
+install_gitleaks() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    log "Gitleaks already installed"
+    return
+  fi
+
+  log "Installing Gitleaks"
+  local version="8.28.0"
+  local arch
+  arch=$(uname -m)
+
+  local asset_suffix=""
+  case "$arch" in
+    x86_64|amd64)
+      asset_suffix="linux_x64"
+      ;;
+    aarch64|arm64)
+      asset_suffix="linux_arm64"
+      ;;
+    armv7l)
+      asset_suffix="linux_armv7"
+      ;;
+    armv6l)
+      asset_suffix="linux_armv6"
+      ;;
+    i386|i686)
+      asset_suffix="linux_x32"
+      ;;
+    *)
+      log "Unsupported architecture for Gitleaks: $arch"
+      return 1
+      ;;
+  esac
+
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  trap 'rm -rf "$tmp_dir"' EXIT
+
+  local tarball="gitleaks_${version}_${asset_suffix}.tar.gz"
+  local url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/${tarball}"
+
+  ensure_command curl curl
+
+  curl -sSL "$url" -o "$tmp_dir/$tarball"
+  tar -xzf "$tmp_dir/$tarball" -C "$tmp_dir"
+
+  if [ ! -d /usr/local/bin ]; then
+    if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+      sudo mkdir -p /usr/local/bin
+    else
+      mkdir -p /usr/local/bin
+    fi
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo mv "$tmp_dir/gitleaks" /usr/local/bin/gitleaks
+    sudo chmod +x /usr/local/bin/gitleaks
+  else
+    mv "$tmp_dir/gitleaks" /usr/local/bin/gitleaks
+    chmod +x /usr/local/bin/gitleaks
+  fi
+
+  rm -rf "$tmp_dir"
+  trap - EXIT
+}
+
+configure_git() {
+  log "Configuring git safe directory"
+  git config --global --add safe.directory /workspaces/*
+}
+
+main() {
+  install_pnpm
+  install_semgrep
+  install_gitleaks
+  configure_git
+  log "Post-create configuration complete"
+}
+
+main
