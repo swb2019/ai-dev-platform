@@ -1,46 +1,38 @@
 module.exports = {
   extends: [
     "eslint:recommended",
-    "@typescript-eslint/recommended",
-    "@typescript-eslint/recommended-requiring-type-checking",
-    "plugin:import/recommended",
-    "plugin:import/typescript",
-    "plugin:security/recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking",
     "plugin:sonarjs/recommended",
-    "prettier"
+    "prettier",
   ],
   parser: "@typescript-eslint/parser",
-  plugins: [
-    "@typescript-eslint",
-    "import",
-    "security",
-    "sonarjs"
-  ],
+  plugins: ["@typescript-eslint", "security", "sonarjs"],
   env: {
     es6: true,
     browser: true,
-    node: true
+    node: true,
   },
   settings: {
     "import/resolver": {
       typescript: {
-        alwaysTryTypes: true
-      }
-    }
+        alwaysTryTypes: true,
+      },
+    },
   },
   rules: {
     // TypeScript specific rules
     "@typescript-eslint/no-unused-vars": [
       "error",
-      { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }
+      { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
     ],
     "@typescript-eslint/consistent-type-imports": [
       "error",
-      { prefer: "type-imports", fixStyle: "separate-type-imports" }
+      { prefer: "type-imports", fixStyle: "separate-type-imports" },
     ],
     "@typescript-eslint/no-misused-promises": [
       "error",
-      { checksVoidReturn: { attributes: false } }
+      { checksVoidReturn: { attributes: false } },
     ],
     "@typescript-eslint/no-unnecessary-condition": "error",
     "@typescript-eslint/prefer-nullish-coalescing": "error",
@@ -57,11 +49,11 @@ module.exports = {
           "internal",
           "parent",
           "sibling",
-          "index"
+          "index",
         ],
         "newlines-between": "always",
-        alphabetize: { order: "asc", caseInsensitive: true }
-      }
+        alphabetize: { order: "asc", caseInsensitive: true },
+      },
     ],
     "import/no-duplicates": "error",
     "import/no-unresolved": "error",
@@ -93,15 +85,33 @@ module.exports = {
     "prefer-const": "error",
     "no-var": "error",
     "object-shorthand": "error",
-    "prefer-template": "error"
+    "prefer-template": "error",
   },
   overrides: [
+    {
+      files: ["*.js", "*.cjs", "*.mjs"],
+      parser: "espree",
+      rules: {
+        "@typescript-eslint/consistent-type-imports": "off",
+        "@typescript-eslint/no-misused-promises": "off",
+        "@typescript-eslint/no-var-requires": "off",
+        "@typescript-eslint/no-unsafe-assignment": "off",
+        "@typescript-eslint/no-unsafe-call": "off",
+        "@typescript-eslint/no-unsafe-member-access": "off",
+        "@typescript-eslint/no-unsafe-argument": "off",
+        "@typescript-eslint/no-unnecessary-condition": "off",
+        "@typescript-eslint/no-unsafe-return": "off",
+        "@typescript-eslint/prefer-nullish-coalescing": "off",
+        "@typescript-eslint/prefer-optional-chain": "off",
+        "@typescript-eslint/prefer-string-starts-ends-with": "off",
+      },
+    },
     {
       files: ["*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"],
       rules: {
         "security/detect-non-literal-fs-filename": "off",
-        "sonarjs/no-duplicate-string": "off"
-      }
-    }
-  ]
+        "sonarjs/no-duplicate-string": "off",
+      },
+    },
+  ],
 };

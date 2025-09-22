@@ -1,43 +1,29 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [
-    "**/.env.*local",
-    "tsconfig.json",
-    "tailwind.config.*"
-  ],
-  "pipeline": {
+  "globalDependencies": ["pnpm-lock.yaml", "packages/tsconfig/**/*.json"],
+  "tasks": {
     "build": {
       "dependsOn": ["^build", "type-check"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"],
-      "env": ["NODE_ENV", "NEXT_PUBLIC_*"]
+      "outputs": [".next/**", "dist/**", "build/**"],
+      "cache": true
     },
     "lint": {
       "dependsOn": ["^lint"],
-      "outputs": []
-    },
-    "lint:fix": {
-      "dependsOn": ["^lint:fix"],
       "outputs": [],
-      "cache": false
+      "cache": true
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^test"],
       "outputs": ["coverage/**"],
-      "inputs": ["src/**", "test/**", "tests/**", "__tests__/**", "*.test.*", "*.spec.*"]
-    },
-    "test:watch": {
-      "cache": false,
-      "persistent": true
+      "cache": true
     },
     "type-check": {
       "dependsOn": ["^type-check"],
-      "outputs": []
+      "outputs": [],
+      "cache": true
     },
     "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "clean": {
+      "persistent": true,
       "cache": false
     }
   }
