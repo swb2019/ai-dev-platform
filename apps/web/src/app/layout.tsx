@@ -1,23 +1,26 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 
-import '../styles/globals.css';
+import "../styles/globals.css";
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const SITE_TITLE = "AI Dev Platform";
+const SITE_DESCRIPTION =
+  "AI-powered development platform with security-first architecture";
 
 export const metadata: Metadata = {
-  title: 'AI Dev Platform',
-  description: 'AI-powered development platform with security-first architecture',
-  metadataBase: new URL('https://ai-dev-platform.local'),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  metadataBase: new URL("https://ai-dev-platform.local"),
   openGraph: {
-    title: 'AI Dev Platform',
-    description: 'AI-powered development platform with security-first architecture',
-    type: 'website',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    type: "website",
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'AI Dev Platform',
-    description: 'AI-powered development platform with security-first architecture',
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
   robots: {
     index: false,
@@ -33,9 +36,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-background font-sans antialiased">
-        <main className="relative flex min-h-screen flex-col">
-          {children}
-        </main>
+        <main className="relative flex min-h-screen flex-col">{children}</main>
       </body>
     </html>
   );

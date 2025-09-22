@@ -4,10 +4,10 @@
   "private": true,
   "description": "AI-powered development platform with security-first architecture",
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
+    "node": "^20.0.0",
+    "pnpm": "^9.0.0"
   },
-  "packageManager": "pnpm@8.15.0",
+  "packageManager": "pnpm@9.12.0",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -22,16 +22,31 @@
     "prepare": "husky install"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "^14.2.3",
     "@types/node": "^20.11.0",
-    "husky": "^8.0.3",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.3",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-security": "^2.1.0",
+    "eslint-plugin-sonarjs": "^0.23.0",
+    "husky": "^9.0.11",
     "lint-staged": "^15.2.0",
-    "prettier": "^3.2.0",
-    "turbo": "^1.12.0",
-    "typescript": "^5.3.0"
+    "prettier": "^3.3.3",
+    "turbo": "^2.1.1",
+    "typescript": "^5.5.4"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": [
+    "*.{ts,tsx}": [
       "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx}": [
       "prettier --write"
     ],
     "*.{json,md,yml,yaml}": [
