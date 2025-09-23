@@ -252,6 +252,14 @@ configure_gcp_infrastructure() {
     printf '[onboard] %s already exists. Remove it to regenerate.\n' "${tfvars_path}"
   else
     printf '\nProvide values for terraform.tfvars (ENTER for defaults).\n'
+    cat <<'PROJECTINFO'
+[onboard] A Google Cloud project with billing enabled is required to continue.
+If you do not have one yet:
+  • Create it in the Cloud Console (https://console.cloud.google.com/) and enable billing, or
+  • Run `gcloud projects create <project-id>` followed by
+    `gcloud beta billing projects link <project-id> --billing-account <account-id>`.
+Press CTRL+C to exit onboarding, set up the project, and rerun this script when ready.
+PROJECTINFO
     while [[ -z "${entered_project_id}" ]]; do
       read -rp "GCP project ID: " entered_project_id
       if [[ -z "${entered_project_id}" ]]; then
