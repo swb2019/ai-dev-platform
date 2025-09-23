@@ -296,7 +296,15 @@ EOT
   if [[ -f "${backend_path}" ]]; then
     printf '[onboard] %s already exists. Remove it to regenerate.\n' "${backend_path}"
   else
-    read -rp "Terraform state bucket name: " state_bucket
+    cat <<'BUCKETINFO'
+[onboard] Terraform state requires a Google Cloud Storage bucket (versioning recommended).
+If you do not already have one, run:
+  gcloud storage buckets create gs://<bucket-name> --project ${backend_project} --location <region> --uniform-bucket-level-access
+Then enable versioning:
+  gcloud storage buckets update gs://<bucket-name> --versioning
+BUCKETINFO
+    read -rp "Terraform state bucket name (e.g. gs://ai-dev-platform-tfstate): " state_bucket
+    state_bucket=${state_bucket#gs://}
     read -rp "Terraform state prefix [ai-dev-platform/prod]: " state_prefix
     read -rp "Terraform state location/region [US]: " state_location
 
