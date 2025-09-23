@@ -9,6 +9,7 @@ This is the Gitleaks repository, a SAST (Static Application Security Testing) to
 ## Development Environment
 
 This project uses a DevContainer setup with the following key components:
+
 - **Runtime**: Node.js 20 with TypeScript support
 - **Security Tools**: Semgrep, Gitleaks, OpenAI CLI
 - **AI Development**: Claude Code CLI, GitHub Copilot, ChatGPT extension
@@ -19,6 +20,7 @@ This project uses a DevContainer setup with the following key components:
 Since this appears to be a Go-based tool (Gitleaks) but the DevContainer is set up for Node.js/TypeScript development, the available commands depend on the actual project structure. Based on the analysis:
 
 **Post-setup commands** (run automatically via DevContainer):
+
 ```bash
 # These are handled by .devcontainer/post-create.sh
 npm install -g @anthropic-ai/claude-code
@@ -27,6 +29,7 @@ pip3 install semgrep openai
 ```
 
 **Security scanning commands** (using installed tools):
+
 ```bash
 # Run Gitleaks to detect secrets
 gitleaks detect --source . -v
@@ -36,6 +39,7 @@ semgrep --config=auto .
 ```
 
 **Development commands** (if TypeScript/Node.js project):
+
 ```bash
 # Common development commands would be:
 npm run build    # Build the project
@@ -54,6 +58,7 @@ This repository is configured as an AI development platform with:
 4. **TypeScript/Node.js Stack**: Primary development environment despite being a Gitleaks repository
 
 The DevContainer automatically installs and configures:
+
 - Security scanning tools (Gitleaks v8.18.4, Semgrep)
 - AI development tools (Claude Code CLI, OpenAI CLI)
 - Development utilities (TypeScript, ts-node, nodemon)
@@ -61,6 +66,7 @@ The DevContainer automatically installs and configures:
 ## VS Code Configuration
 
 The project includes comprehensive VS Code settings for:
+
 - Auto-formatting with Prettier on save
 - ESLint integration with auto-fix
 - TypeScript support with advanced IntelliSense

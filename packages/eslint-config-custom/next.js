@@ -4,22 +4,18 @@ module.exports = {
     "next/core-web-vitals",
     "plugin:react/recommended",
     "plugin:react-hooks/recommended",
-    "plugin:jsx-a11y/recommended"
+    "plugin:jsx-a11y/recommended",
   ],
-  plugins: [
-    "react",
-    "react-hooks",
-    "jsx-a11y"
-  ],
+  plugins: ["react", "react-hooks", "jsx-a11y"],
   settings: {
     react: {
-      version: "detect"
-    }
+      version: "detect",
+    },
   },
   env: {
     browser: true,
     node: true,
-    es6: true
+    es6: true,
   },
   rules: {
     // React specific rules
@@ -61,20 +57,20 @@ module.exports = {
     "@next/next/no-unwanted-polyfillio": "error",
     "@next/next/no-page-custom-font": "error",
     "@next/next/no-sync-scripts": "error",
-    "@next/next/no-title-in-document-head": "error"
+    "@next/next/no-title-in-document-head": "error",
   },
   overrides: [
     {
       files: ["app/**/*.tsx", "pages/**/*.tsx"],
       rules: {
-        "import/no-default-export": "off" // Next.js requires default exports for pages
-      }
+        "import/no-default-export": "off", // Next.js requires default exports for pages
+      },
     },
     {
       files: ["*.stories.tsx", "*.stories.ts"],
       rules: {
-        "import/no-default-export": "off" // Storybook requires default exports
-      }
-    }
-  ]
+        "import/no-default-export": "off", // Storybook requires default exports
+      },
+    },
+  ],
 };

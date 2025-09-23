@@ -1,0 +1,35 @@
+title = "AI Dev Platform Gitleaks Configuration"
+
+description = "Hardened secret scanning tuned for the AI Dev Platform"
+
+[extend]
+  useDefault = true
+
+[allowlist]
+  description = "Allowlists documentation-only content and intentional examples"
+  paths = [
+    "^README\\.md$",
+    "^docs/AGENT_PROTOCOLS\\.md$",
+    "^docs/ONBOARDING\\.md$"
+  ]
+  regexes = [
+    "(?i)dummy[-_ ]?(secret|token|password)"
+  ]
+
+[[rules]]
+  id = "anthropic-api-key"
+  description = "Detect Anthropic API keys"
+  regex = "sk-ant-[a-z0-9]{32,}"
+  tags = ["key", "anthropic"]
+
+[[rules]]
+  id = "cursor-api-key"
+  description = "Detect Cursor API keys"
+  regex = "cursor_[a-z0-9]{32,}"
+  tags = ["key", "cursor"]
+
+[[rules]]
+  id = "infisical-service-token"
+  description = "Detect Infisical service tokens"
+  regex = "inf-?st-[a-z0-9]{32,}"
+  tags = ["key", "infisical"]

@@ -16,11 +16,5 @@
     "noEmit": false
   },
   "include": ["src"],
-  "exclude": [
-    "dist",
-    "build",
-    "node_modules",
-    "**/*.test.*",
-    "**/*.spec.*"
-  ]
+  "exclude": ["dist", "build", "node_modules", "**/*.test.*", "**/*.spec.*"]
 }

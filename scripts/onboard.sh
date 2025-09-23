@@ -13,7 +13,7 @@ fi
 welcome() {
   cat <<'MESSAGE'
 ==================================================
- AI Dev Platform • Onboarding Assistant
+ AI Dev Platform - Onboarding Assistant
 ==================================================
 This guided flow will verify local authentication, bootstrap secrets, and
 prepare your IDE for autonomous development.
@@ -65,9 +65,50 @@ ensure_infisical_cli_available() {
   cat <<'INFICLI'
 [onboard] Infisical CLI was not found on PATH.
 The post-create script should install it automatically. If you rebuilt before it
-finished, run `npm install -g infisical` or rebuild the container, then retry.
+finished, run `npm install -g @infisical/cli` or rebuild the container, then retry.
 INFICLI
   return 1
+}
+
+INFISICAL_FETCH_SUCCESS_MESSAGE='[onboard] Secrets pulled successfully.'
+INFISICAL_FETCH_PROMPT='Resolve the Infisical pull error and press ENTER to retry: '
+
+infisical_supports_command() {
+  local subcommand="$1"
+  local help_output=""
+
+  if ! help_output="$(infisical help 2>&1)"; then
+    return 1
+  fi
+
+  if printf '%s\n' "$help_output" | grep -E "^[[:space:]]+${subcommand}([[:space:]]|$)" >/dev/null; then
+    return 0
+  fi
+
+  return 1
+}
+
+infisical_fetch_secrets() {
+  if infisical_supports_command "pull"; then
+    INFISICAL_FETCH_SUCCESS_MESSAGE='[onboard] Secrets pulled successfully.'
+    INFISICAL_FETCH_PROMPT='Resolve the Infisical pull error and press ENTER to retry: '
+    infisical pull
+    return
+  fi
+
+  INFISICAL_FETCH_PROMPT='Resolve the Infisical export error and press ENTER to retry: '
+  local env_name="${INFISICAL_ENVIRONMENT:-dev}"
+  local configured_path="${INFISICAL_SECRETS_FILE:-.env.local}"
+  local output_path="$configured_path"
+
+  if [[ "${output_path}" != /* ]]; then
+    output_path="${REPO_ROOT}/${output_path}"
+  fi
+
+  mkdir -p "$(dirname "${output_path}")"
+  printf '[onboard] Detected Infisical CLI without legacy pull command. Exporting secrets for env "%s" to %s.\n' "${env_name}" "${output_path}"
+  INFISICAL_FETCH_SUCCESS_MESSAGE="[onboard] Secrets exported to ${output_path}."
+  (cd "${REPO_ROOT}" && infisical --silent export --env="${env_name}" --format=dotenv --output-file="${output_path}")
 }
 
 run_infisical_bootstrap() {
@@ -80,13 +121,13 @@ run_infisical_bootstrap() {
     prompt_enter "Address the issue (install/login) and press ENTER to retry Infisical login: "
   done
 
-  printf '\n[onboard] Step 4: Pulling development secrets with Infisical...\n'
+  printf '\n[onboard] Step 4: Retrieving development secrets with Infisical...\n'
   while true; do
-    if infisical pull; then
-      printf '[onboard] Secrets pulled successfully.\n'
+    if infisical_fetch_secrets; then
+      printf '%s\n' "${INFISICAL_FETCH_SUCCESS_MESSAGE}"
       break
     fi
-    prompt_enter "Resolve the Infisical pull error and press ENTER to retry: "
+    prompt_enter "${INFISICAL_FETCH_PROMPT}"
   done
 }
 

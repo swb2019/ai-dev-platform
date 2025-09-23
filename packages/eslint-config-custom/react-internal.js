@@ -3,21 +3,17 @@ module.exports = {
     "./index.js",
     "plugin:react/recommended",
     "plugin:react-hooks/recommended",
-    "plugin:jsx-a11y/recommended"
+    "plugin:jsx-a11y/recommended",
   ],
-  plugins: [
-    "react",
-    "react-hooks",
-    "jsx-a11y"
-  ],
+  plugins: ["react", "react-hooks", "jsx-a11y"],
   settings: {
     react: {
-      version: "detect"
-    }
+      version: "detect",
+    },
   },
   env: {
     browser: true,
-    es6: true
+    es6: true,
   },
   rules: {
     // React specific rules
@@ -45,6 +41,6 @@ module.exports = {
 
     // Import/export rules for libraries
     "import/no-default-export": "error", // Prefer named exports for libraries
-    "import/prefer-default-export": "off"
-  }
+    "import/prefer-default-export": "off",
+  },
 };

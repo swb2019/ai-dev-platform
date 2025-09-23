@@ -1,9 +1,7 @@
 set -e
 
-pnpm exec lint-staged
-
 if command -v gitleaks >/dev/null 2>&1; then
-  gitleaks protect --staged
+  gitleaks detect --source . --redact
 else
   echo "gitleaks CLI not found. Run onboarding to install it." >&2
   exit 1

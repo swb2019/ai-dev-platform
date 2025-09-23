@@ -139,4 +139,6 @@ temp/
 .turbo
 
 # Local Netlify folder
-.netlify.pnpm-store/
+.netlify/
+.pnpm-store/
+.infisical.json
