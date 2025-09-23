@@ -69,6 +69,7 @@ ai-dev-platform/
 - `pnpm docker:sbom:web` - Generate a CycloneDX SBOM for the image
 - `pnpm docker:sign:sbom` - Keyless-sign the generated SBOM with Cosign
 - GitHub Actions run CodeQL static analysis on every PR, push to `main`, and weekly schedule
+- Terraform workflows (plan/apply) and GKE deployment pipelines run automatically using Workload Identity Federation
 
 ### Development Workflow
 
@@ -87,6 +88,7 @@ This project includes multiple security layers:
 - **Static analysis**: CodeQL (extended security rules) for TypeScript/JavaScript
 - **Dependency scanning**: Automated vulnerability detection
 - **Code analysis**: Static analysis with Semgrep and ESLint security rules
+- **Infrastructure-as-code**: Terraform modules/prd environment for GKE, VPC, Artifact Registry, and Workload Identity Federation
 
 ## Architecture
 
@@ -140,6 +142,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Architecture Guide](docs/ARCHITECTURE.md) - Detailed system architecture
 - [Security Guide](docs/SECURITY.md) - Security practices and guidelines
 - [Supply Chain Guide](docs/SUPPLY_CHAIN.md) - Containerization, scanning, SBOMs, and signing workflows
+- [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Terraform modules, Workload Identity Federation, and GCP setup
+- [Deployment Guide](docs/DEPLOYMENT.md) - CI/CD pipeline and Kubernetes rollout details
 
 ## Support
 

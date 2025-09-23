@@ -54,3 +54,7 @@ Resolve the issue, then press ENTER to retry the check.
 ## Supply Chain Tooling
 
 The dev container installs Trivy, Grype, Syft, and Cosign automatically. After onboarding completes, review [docs/SUPPLY_CHAIN.md](./SUPPLY_CHAIN.md) for container build, scanning, SBOM, and signing workflows.
+
+## Infrastructure & Deployments
+
+Infrastructure is managed with Terraform and deployed to Google Cloud via Workload Identity Federation. See [docs/INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for provisioning details and [docs/DEPLOYMENT.md](./DEPLOYMENT.md) for the automated release pipeline.
