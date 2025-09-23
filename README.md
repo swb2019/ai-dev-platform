@@ -40,6 +40,12 @@ pnpm install
 pnpm dev
 ```
 
+4. Run the guided setup (generates secrets, installs deps, optional Terraform config):
+
+```bash
+./scripts/onboard.sh
+```
+
 ## Project Structure
 
 ```

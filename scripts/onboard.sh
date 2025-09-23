@@ -131,10 +131,117 @@ run_infisical_bootstrap() {
   done
 }
 
+ensure_node_dependencies() {
+  printf '\n[onboard] Step 5: Verifying pnpm dependencies...\n'
+  if ! command -v pnpm >/dev/null 2>&1; then
+    printf '[onboard] pnpm >=9 is required. Install pnpm and rerun onboarding.\n'
+    exit 1
+  fi
+
+  if [[ -d "${REPO_ROOT}/node_modules" ]]; then
+    printf '[onboard] node_modules already present. Skipping pnpm install.\n'
+    return
+  fi
+
+  (cd "${REPO_ROOT}" && pnpm install)
+}
+
+configure_gcp_infrastructure() {
+  printf '\n[onboard] Step 6: Optional Terraform & GCP configuration.\n'
+  read -rp "Configure Terraform environment files now? (y/N): " response
+  case "${response}" in
+    y|Y|yes|YES)
+      ;;
+    *)
+      printf '[onboard] Skipping Terraform configuration for now.\n'
+      return
+      ;;
+  esac
+
+  local tf_dir="${REPO_ROOT}/infra/terraform/envs/prod"
+  local tfvars_path="${tf_dir}/terraform.tfvars"
+  local backend_path="${tf_dir}/backend.auto.tfbackend"
+
+  local repo_full=""
+  if repo_full=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null); then
+    true
+  else
+    local origin_url="$(git -C "${REPO_ROOT}" remote get-url origin 2>/dev/null || echo '')"
+    if [[ "${origin_url}" =~ github.com[:/]{1}([^/]+)/([^/.]+) ]]; then
+      repo_full="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+    fi
+  fi
+
+  if [[ -z "${repo_full}" ]]; then
+    repo_full="your-org/ai-dev-platform"
+  fi
+
+  local repo_owner="${repo_full%%/*}"
+  local repo_name="${repo_full##*/}"
+
+  local entered_project_id=""
+
+  if [[ -f "${tfvars_path}" ]]; then
+    printf '[onboard] %s already exists. Remove it to regenerate.\n' "${tfvars_path}"
+  else
+    printf '\nProvide values for terraform.tfvars (ENTER for defaults).\n'
+    read -rp "GCP project ID: " entered_project_id
+    read -rp "Default region [us-central1]: " region
+    local region_value="${region:-us-central1}"
+    read -rp "GKE location (region or zone) [${region_value}]: " location
+    local location_value="${location:-${region_value}}"
+    read -rp "Artifact Registry repository ID [ai-dev-platform]: " registry
+    read -rp "GKE cluster name [ai-dev-autopilot]: " cluster_name
+    read -rp "VPC name prefix [ai-dev]: " network_name
+
+    cat <<EOT >"${tfvars_path}"
+project_id           = "${entered_project_id}"
+region               = "${region_value}"
+location             = "${location_value}"
+github_org           = "${repo_owner}"
+github_repo          = "${repo_name}"
+cluster_name         = "${cluster_name:-ai-dev-autopilot}"
+network_name         = "${network_name:-ai-dev}"
+release_channel      = "REGULAR"
+artifact_registry_repo = "${registry:-ai-dev-platform}"
+EOT
+    printf '[onboard] Created %s\n' "${tfvars_path}"
+  fi
+
+  local backend_project="${entered_project_id}"
+  if [[ -z "${backend_project}" && -f "${tfvars_path}" ]]; then
+    backend_project=$(grep -E '^project_id' "${tfvars_path}" | awk -F '"' '{print $2}' || true)
+  fi
+
+  if [[ -f "${backend_path}" ]]; then
+    printf '[onboard] %s already exists. Remove it to regenerate.\n' "${backend_path}"
+  else
+    read -rp "Terraform state bucket name: " state_bucket
+    read -rp "Terraform state prefix [ai-dev-platform/prod]: " state_prefix
+    read -rp "Terraform state location/region [US]: " state_location
+
+    cat <<EOT >"${backend_path}"
+bucket  = "${state_bucket}"
+prefix  = "${state_prefix:-ai-dev-platform/prod}"
+project = "${backend_project}"
+location = "${state_location:-US}"
+EOT
+    printf '[onboard] Created %s\n' "${backend_path}"
+  fi
+
+  cat <<'NEXTSTEPS'
+
+[onboard] Terraform configuration files generated. Next steps:
+  • Ensure the Terraform state bucket exists and run `terraform -chdir=infra/terraform/envs/prod init`.
+  • After the first `terraform apply`, capture outputs (service account emails, WIF provider name, cluster name).
+  • Populate GitHub secrets and variables listed in docs/INFRASTRUCTURE.md using those outputs.
+NEXTSTEPS
+}
+
 confirm_cursor_setup() {
   cat <<'CURSORMESSAGE'
 
-[onboard] Step 5: Configure Cursor IDE for autonomous operation.
+[onboard] Step 7: Configure Cursor IDE for autonomous operation.
 - Enable "Auto-Run" in Cursor Settings.
 - Sign into the Claude Code extension.
 - Sign into the OpenAI Codex (ChatGPT) extension if available.
@@ -143,7 +250,7 @@ CURSORMESSAGE
 }
 
 collect_final_confirmation() {
-  printf '\n[onboard] Step 6: Final confirmation.\n'
+  printf '\n[onboard] Step 8: Final confirmation.\n'
   while true; do
     read -rp "Type 'yes' to confirm that onboarding is complete: " response
     case "${response}" in
@@ -172,6 +279,8 @@ main() {
   ensure_github_cli
   ensure_git_remote
   run_infisical_bootstrap
+  ensure_node_dependencies
+  configure_gcp_infrastructure
   confirm_cursor_setup
   collect_final_confirmation
   finalize

@@ -16,8 +16,10 @@
 2. **GitHub CLI Auth Check.** Runs `gh auth status` until authentication succeeds. Use `gh auth login` if prompted.
 3. **Git Remote Verification.** Calls `git ls-remote origin HEAD` to verify SSH/HTTPS connectivity.
 4. **Secrets Bootstrap (Infisical).** Executes `infisical login` and then either `infisical pull` (legacy CLI) or `infisical --silent export --env dev --format=dotenv --output-file .env.local` to authenticate and download development secrets.
-5. **Cursor IDE Configuration.** Reminds you to enable Auto-Run and sign into Claude Code / Codex extensions.
-6. **Final Confirmation.** Records completion only after explicit confirmation.
+5. **Dependencies.** Ensures pnpm dependencies are installed (skipped when `node_modules` already exists).
+6. **Infrastructure Configuration (Optional).** Generates `terraform.tfvars` and `backend.auto.tfbackend` for the prod environment if you opt in.
+7. **Cursor IDE Configuration.** Reminds you to enable Auto-Run and sign into Claude Code / Codex extensions.
+8. **Final Confirmation.** Records completion only after explicit confirmation.
 
 ## Git Authentication Troubleshooting
 
