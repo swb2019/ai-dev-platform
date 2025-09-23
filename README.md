@@ -68,6 +68,7 @@ ai-dev-platform/
 - `pnpm docker:scan:web` - Run Trivy and Grype vulnerability scans on the image
 - `pnpm docker:sbom:web` - Generate a CycloneDX SBOM for the image
 - `pnpm docker:sign:sbom` - Keyless-sign the generated SBOM with Cosign
+- GitHub Actions run CodeQL static analysis on every PR, push to `main`, and weekly schedule
 
 ### Development Workflow
 
@@ -83,6 +84,7 @@ This project includes multiple security layers:
 
 - **Pre-commit hooks**: Automated security scanning and linting
 - **CI/CD pipeline**: Comprehensive security checks on all PRs
+- **Static analysis**: CodeQL (extended security rules) for TypeScript/JavaScript
 - **Dependency scanning**: Automated vulnerability detection
 - **Code analysis**: Static analysis with Semgrep and ESLint security rules
 
