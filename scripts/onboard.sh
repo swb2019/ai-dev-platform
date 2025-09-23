@@ -146,6 +146,73 @@ ensure_node_dependencies() {
   (cd "${REPO_ROOT}" && pnpm install)
 }
 
+require_command() {
+  local cmd="$1"
+  local hint="$2"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    return
+  fi
+  printf '[onboard] Required command "%s" not found. %s\n' "$cmd" "$hint"
+  exit 1
+}
+
+ensure_gcloud_adc() {
+  require_command gcloud "Install the Google Cloud SDK from https://cloud.google.com/sdk/docs/install"
+  while true; do
+    if gcloud auth application-default print-access-token >/dev/null 2>&1; then
+      break
+    fi
+    cat <<'ADCMSG'
+[onboard] Google Cloud application-default credentials not found.
+Run `gcloud auth application-default login` in this terminal, complete the prompts, then press ENTER to continue.
+ADCMSG
+    prompt_enter
+  done
+}
+
+run_terraform_apply() {
+  local tf_dir="$1"
+  local project_id="$2"
+
+  require_command docker "Install Docker or use the dev container where it is preinstalled."
+  ensure_gcloud_adc
+
+  if [[ ! -d "${tf_dir}" ]]; then
+    printf '[onboard] Terraform directory %s not found.\n' "${tf_dir}"
+    return 1
+  fi
+
+  local gcloud_config_dir="${HOME}/.config/gcloud"
+  if [[ ! -d "${gcloud_config_dir}" ]]; then
+    printf '[onboard] Expected gcloud config directory %s not found.\n' "${gcloud_config_dir}"
+    return 1
+  fi
+
+  printf '\n[onboard] Running Terraform init/apply via Docker (hashicorp/terraform:1.8.5)...\n'
+  docker run --rm \
+    -v "${tf_dir}":/workspace \
+    -v "${gcloud_config_dir}":/root/.config/gcloud:ro \
+    -w /workspace \
+    -e GOOGLE_PROJECT="${project_id}" \
+    hashicorp/terraform:1.8.5 init -input=false
+
+  docker run --rm \
+    -v "${tf_dir}":/workspace \
+    -v "${gcloud_config_dir}":/root/.config/gcloud:ro \
+    -w /workspace \
+    hashicorp/terraform:1.8.5 apply -input=false -auto-approve
+
+  printf '\n[onboard] Terraform apply complete. Capturing key outputs...\n'
+  docker run --rm \
+    -v "${tf_dir}":/workspace \
+    -w /workspace \
+    hashicorp/terraform:1.8.5 output > terraform-outputs.txt
+  printf '[onboard] Terraform outputs saved to %s/terraform-outputs.txt.\n' "${tf_dir}"
+  cat <<'OUTPUTMSG'
+[onboard] Use `terraform output -raw <name>` (or inspect terraform-outputs.txt) to populate GitHub secrets/variables as described in docs/INFRASTRUCTURE.md.
+OUTPUTMSG
+}
+
 configure_gcp_infrastructure() {
   printf '\n[onboard] Step 6: Optional Terraform & GCP configuration.\n'
   read -rp "Configure Terraform environment files now? (y/N): " response
@@ -185,7 +252,12 @@ configure_gcp_infrastructure() {
     printf '[onboard] %s already exists. Remove it to regenerate.\n' "${tfvars_path}"
   else
     printf '\nProvide values for terraform.tfvars (ENTER for defaults).\n'
-    read -rp "GCP project ID: " entered_project_id
+    while [[ -z "${entered_project_id}" ]]; do
+      read -rp "GCP project ID: " entered_project_id
+      if [[ -z "${entered_project_id}" ]]; then
+        printf '[onboard] A GCP project ID is required to provision infrastructure.\n'
+      fi
+    done
     read -rp "Default region [us-central1]: " region
     local region_value="${region:-us-central1}"
     read -rp "GKE location (region or zone) [${region_value}]: " location
@@ -236,6 +308,16 @@ EOT
   • After the first `terraform apply`, capture outputs (service account emails, WIF provider name, cluster name).
   • Populate GitHub secrets and variables listed in docs/INFRASTRUCTURE.md using those outputs.
 NEXTSTEPS
+
+  read -rp "Run Terraform init/apply now via Docker? (y/N): " run_tf
+  case "${run_tf}" in
+    y|Y|yes|YES)
+      run_terraform_apply "${tf_dir}" "${backend_project}"
+      ;;
+    *)
+      printf '[onboard] You can run Terraform later with `terraform -chdir=infra/terraform/envs/prod apply`.\n'
+      ;;
+  esac
 }
 
 confirm_cursor_setup() {
