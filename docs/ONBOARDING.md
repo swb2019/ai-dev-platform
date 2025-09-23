@@ -15,7 +15,7 @@
 1. **Welcome.** Provides context for the onboarding steps.
 2. **GitHub CLI Auth Check.** Runs `gh auth status` until authentication succeeds. Use `gh auth login` if prompted.
 3. **Git Remote Verification.** Calls `git ls-remote origin HEAD` to verify SSH/HTTPS connectivity.
-4. **Secrets Bootstrap (Infisical).** Executes `infisical login` and `infisical pull` to authenticate and download development secrets.
+4. **Secrets Bootstrap (Infisical).** Executes `infisical login` and then either `infisical pull` (legacy CLI) or `infisical --silent export --env dev --format=dotenv --output-file .env.local` to authenticate and download development secrets.
 5. **Cursor IDE Configuration.** Reminds you to enable Auto-Run and sign into Claude Code / Codex extensions.
 6. **Final Confirmation.** Records completion only after explicit confirmation.
 
@@ -41,9 +41,9 @@ Resolve the issue, then press ENTER to retry the check.
 
 ## Infisical Notes
 
-- The dev container installs the Infisical CLI via `npm install -g infisical` during `post-create`.
+- The dev container installs the Infisical CLI via `npm install -g @infisical/cli` during `post-create`.
 - `infisical login` opens an interactive prompt (Browser, Device Code, or Service Token). Complete it in the same terminal.
-- `infisical pull` writes decrypted secrets to the local environment according to your Infisical project settings. Re-run the command whenever secrets change.
+- When the CLI no longer exposes the legacy `pull` command, the onboarding script falls back to `infisical --silent export --env dev --format=dotenv --output-file .env.local` (override via `INFISICAL_ENVIRONMENT` and `INFISICAL_SECRETS_FILE`) to write decrypted secrets locally without printing them. Legacy releases still run `infisical pull`.
 
 ## IDE Configuration Tips
 

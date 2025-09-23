@@ -52,18 +52,18 @@ install_infisical_cli() {
     return
   fi
 
-  log "Installing Infisical CLI"
-  ensure_command curl curl
+  log "Installing Infisical CLI (@infisical/cli)"
 
-  local install_cmd=(npm install -g infisical)
+  local package="@infisical/cli"
+  local install_cmd=(npm install -g "$package")
   if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
     if ! sudo "${install_cmd[@]}" >/dev/null; then
-      log "npm installation of Infisical CLI failed"
+      log "npm installation of Infisical CLI (@infisical/cli) failed"
       return 1
     fi
   else
     if ! "${install_cmd[@]}" >/dev/null; then
-      log "npm installation of Infisical CLI failed"
+      log "npm installation of Infisical CLI (@infisical/cli) failed"
       return 1
     fi
   fi
@@ -220,7 +220,7 @@ install_cursor_openai_codex_extension() {
   if [ -d "/home/codespace" ]; then
     base_candidates+=("/home/codespace")
   fi
-  if [ -d "/root" ]; then
+  if [ -d "/root" ] && [ "$(id -u)" -eq 0 ]; then
     base_candidates+=("/root")
   fi
 
@@ -344,6 +344,46 @@ configure_git() {
   git config --global --add safe.directory /workspaces/*
 }
 
+bootstrap_workspace_dependencies() {
+  if [ ! -f package.json ]; then
+    log "No package.json detected; skipping pnpm install"
+    return
+  fi
+
+  if [ -d node_modules ]; then
+    log "node_modules directory already present; skipping pnpm install"
+    return
+  fi
+
+  if ! command -v pnpm >/dev/null 2>&1; then
+    log "pnpm not available; cannot install workspace dependencies"
+    return
+  fi
+
+  log "Installing workspace dependencies (pnpm install)"
+  if ! pnpm install --frozen-lockfile --reporter=silent; then
+    log "pnpm install with frozen lockfile failed; retrying without --frozen-lockfile"
+    pnpm install --reporter=default
+  fi
+}
+
+initialize_husky() {
+  if [ ! -d .husky ]; then
+    log "No .husky directory detected; skipping Husky initialization"
+    return
+  fi
+
+  if ! command -v pnpm >/dev/null 2>&1; then
+    log "pnpm not available; cannot initialize Husky"
+    return
+  fi
+
+  log "Initializing Husky git hooks"
+  if ! pnpm exec husky >/dev/null 2>&1; then
+    log "Husky initialization failed. Run 'pnpm install' and retry manually."
+  fi
+}
+
 main() {
   install_pnpm
   install_infisical_cli
@@ -352,6 +392,8 @@ main() {
   install_claude_code_cli
   install_cursor_openai_codex_extension
   configure_git
+  bootstrap_workspace_dependencies
+  initialize_husky
   log "Post-create configuration complete"
 }
 
