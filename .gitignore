@@ -144,4 +144,6 @@ temp/
 .netlify/
 .pnpm-store/
 .infisical.json
+infra/terraform/envs/prod/backend.auto.tfbackend
+infra/terraform/envs/prod/terraform.tfvars
 artifacts/
