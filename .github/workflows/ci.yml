@@ -77,3 +77,76 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  supply_chain:
+    name: Supply Chain Security
+    runs-on: ubuntu-latest
+    needs: quality_and_build
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      IMAGE_REF: ghcr.io/${{ github.repository_owner }}/ai-dev-platform-web:${{ github.sha }}
+      LOCAL_TAG: ai-dev-platform/web:ci
+      SBOM_PATH: artifacts/sbom-web-cyclonedx.json
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure artifacts directory
+        run: mkdir -p artifacts
+
+      - name: Install supply chain tooling
+        run: bash ./scripts/container/install-tools.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container image
+        run: docker build -f apps/web/Dockerfile -t $LOCAL_TAG -t $IMAGE_REF .
+
+      - name: Run Trivy scan
+        run: trivy image --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore $LOCAL_TAG
+
+      - name: Run Grype scan
+        run: grype $LOCAL_TAG --fail-on High --config .grype.yaml
+
+      - name: Generate SBOM (Syft)
+        run: syft $LOCAL_TAG -o cyclonedx-json > $SBOM_PATH
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push container image
+        run: docker push $IMAGE_REF
+
+      - name: Cosign keyless signature
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+          cosign sign --keyless --yes $IMAGE_REF
+
+      - name: Cosign SBOM attestation
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: cosign attest --keyless --yes --predicate $SBOM_PATH --type cyclonedx $IMAGE_REF
+
+      - name: Sign SBOM artifact
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: cosign sign-blob $SBOM_PATH --output-signature ${SBOM_PATH}.sig --output-certificate ${SBOM_PATH}.cert --yes
+
+      - name: Upload supply chain artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: supply-chain-artifacts
+          path: |
+            ${{ env.SBOM_PATH }}
+            ${{ env.SBOM_PATH }}.sig
+            ${{ env.SBOM_PATH }}.cert

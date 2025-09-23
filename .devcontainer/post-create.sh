@@ -32,6 +32,18 @@ ensure_command() {
   fi
 }
 
+ensure_usr_local_bin() {
+  if [ -d /usr/local/bin ]; then
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo mkdir -p /usr/local/bin
+  else
+    mkdir -p /usr/local/bin
+  fi
+}
+
 install_pnpm() {
   if command -v pnpm >/dev/null 2>&1; then
     log "pnpm already installed"
@@ -181,6 +193,237 @@ install_claude_code_cli() {
   else
     "${install_cmd[@]}" >/dev/null
   fi
+}
+
+install_trivy() {
+  if command -v trivy >/dev/null 2>&1; then
+    log "Trivy already installed"
+    return
+  fi
+
+  log "Installing Trivy"
+  local version="0.50.2"
+  local arch
+  arch=$(uname -m)
+  local archive_suffix
+
+  case "$arch" in
+    x86_64|amd64)
+      archive_suffix="Linux-64bit"
+      ;;
+    aarch64|arm64)
+      archive_suffix="Linux-ARM64"
+      ;;
+    armv7l|armv7)
+      archive_suffix="Linux-ARM"
+      ;;
+    *)
+      log "Unsupported architecture for Trivy: $arch"
+      return 0
+      ;;
+  esac
+
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  if [ ! -d "$tmp_dir" ]; then
+    log "Failed to create temporary directory for Trivy install"
+    return 1
+  fi
+
+  local archive_name="trivy_${version}_${archive_suffix}.tar.gz"
+  local url="https://github.com/aquasecurity/trivy/releases/download/v${version}/${archive_name}"
+
+  if ! curl -fsSL "$url" -o "$tmp_dir/${archive_name}"; then
+    log "Failed to download Trivy from $url"
+    rm -rf "$tmp_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  if ! tar -xzf "$tmp_dir/${archive_name}" -C "$tmp_dir" trivy; then
+    log "Failed to extract Trivy archive"
+    rm -rf "$tmp_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  ensure_usr_local_bin
+
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo install -m 755 "$tmp_dir/trivy" /usr/local/bin/trivy >/dev/null
+  else
+    install -m 755 "$tmp_dir/trivy" /usr/local/bin/trivy >/dev/null
+  fi
+
+  rm -rf "$tmp_dir" 2>/dev/null || true
+}
+
+install_grype() {
+  if command -v grype >/dev/null 2>&1; then
+    log "Grype already installed"
+    return
+  fi
+
+  log "Installing Grype"
+  local version="0.100.0"
+  local arch
+  arch=$(uname -m)
+  local archive_suffix
+
+  case "$arch" in
+    x86_64|amd64)
+      archive_suffix="linux_amd64"
+      ;;
+    aarch64|arm64)
+      archive_suffix="linux_arm64"
+      ;;
+    *)
+      log "Unsupported architecture for Grype: $arch"
+      return 0
+      ;;
+  esac
+
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  if [ ! -d "$tmp_dir" ]; then
+    log "Failed to create temporary directory for Grype install"
+    return 1
+  fi
+
+  local archive_name="grype_${version}_${archive_suffix}.tar.gz"
+  local url="https://github.com/anchore/grype/releases/download/v${version}/${archive_name}"
+
+  if ! curl -fsSL "$url" -o "$tmp_dir/${archive_name}"; then
+    log "Failed to download Grype from $url"
+    rm -rf "$tmp_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  if ! tar -xzf "$tmp_dir/${archive_name}" -C "$tmp_dir" grype; then
+    log "Failed to extract Grype archive"
+    rm -rf "$tmp_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  ensure_usr_local_bin
+
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo install -m 755 "$tmp_dir/grype" /usr/local/bin/grype >/dev/null
+  else
+    install -m 755 "$tmp_dir/grype" /usr/local/bin/grype >/dev/null
+  fi
+
+  rm -rf "$tmp_dir" 2>/dev/null || true
+}
+
+install_syft() {
+  if command -v syft >/dev/null 2>&1; then
+    log "Syft already installed"
+    return
+  fi
+
+  log "Installing Syft"
+  local version="1.33.0"
+  local arch
+  arch=$(uname -m)
+  local archive_suffix
+
+  case "$arch" in
+    x86_64|amd64)
+      archive_suffix="linux_amd64"
+      ;;
+    aarch64|arm64)
+      archive_suffix="linux_arm64"
+      ;;
+    *)
+      log "Unsupported architecture for Syft: $arch"
+      return 0
+      ;;
+  esac
+
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  if [ ! -d "$tmp_dir" ]; then
+    log "Failed to create temporary directory for Syft install"
+    return 1
+  fi
+
+  local archive_name="syft_${version}_${archive_suffix}.tar.gz"
+  local url="https://github.com/anchore/syft/releases/download/v${version}/${archive_name}"
+
+  if ! curl -fsSL "$url" -o "$tmp_dir/${archive_name}"; then
+    log "Failed to download Syft from $url"
+    rm -rf "$tmp_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  if ! tar -xzf "$tmp_dir/${archive_name}" -C "$tmp_dir" syft; then
+    log "Failed to extract Syft archive"
+    rm -rf "$tmp_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  ensure_usr_local_bin
+
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo install -m 755 "$tmp_dir/syft" /usr/local/bin/syft >/dev/null
+  else
+    install -m 755 "$tmp_dir/syft" /usr/local/bin/syft >/dev/null
+  fi
+
+  rm -rf "$tmp_dir" 2>/dev/null || true
+}
+
+install_cosign() {
+  if command -v cosign >/dev/null 2>&1; then
+    log "Cosign already installed"
+    return
+  fi
+
+  log "Installing Cosign"
+  local version="2.6.0"
+  local arch
+  arch=$(uname -m)
+  local binary_suffix
+
+  case "$arch" in
+    x86_64|amd64)
+      binary_suffix="linux-amd64"
+      ;;
+    aarch64|arm64)
+      binary_suffix="linux-arm64"
+      ;;
+    *)
+      log "Unsupported architecture for Cosign: $arch"
+      return 0
+      ;;
+  esac
+
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  if [ ! -d "$tmp_dir" ]; then
+    log "Failed to create temporary directory for Cosign install"
+    return 1
+  fi
+
+  local url="https://github.com/sigstore/cosign/releases/download/v${version}/cosign-${binary_suffix}"
+  local destination="$tmp_dir/cosign"
+
+  if ! curl -fsSL "$url" -o "$destination"; then
+    log "Failed to download Cosign from $url"
+    rm -rf "$tmp_dir" 2>/dev/null || true
+    return 1
+  fi
+
+  chmod +x "$destination"
+
+  ensure_usr_local_bin
+
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    sudo install -m 755 "$destination" /usr/local/bin/cosign >/dev/null
+  else
+    install -m 755 "$destination" /usr/local/bin/cosign >/dev/null
+  fi
+
+  rm -rf "$tmp_dir" 2>/dev/null || true
 }
 
 install_cursor_openai_codex_extension() {
@@ -389,6 +632,10 @@ main() {
   install_infisical_cli
   install_semgrep
   install_gitleaks
+  install_trivy
+  install_grype
+  install_syft
+  install_cosign
   install_claude_code_cli
   install_cursor_openai_codex_extension
   configure_git

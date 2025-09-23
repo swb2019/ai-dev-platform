@@ -64,6 +64,10 @@ ai-dev-platform/
 - `pnpm lint` - Lint all code
 - `pnpm type-check` - Type check all TypeScript code
 - `pnpm format` - Format code with Prettier
+- `pnpm docker:build:web` - Build the production container image for the web app
+- `pnpm docker:scan:web` - Run Trivy and Grype vulnerability scans on the image
+- `pnpm docker:sbom:web` - Generate a CycloneDX SBOM for the image
+- `pnpm docker:sign:sbom` - Keyless-sign the generated SBOM with Cosign
 
 ### Development Workflow
 
@@ -133,6 +137,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Agent Protocols](docs/AGENT_PROTOCOLS.md) - Autonomous development protocols
 - [Architecture Guide](docs/ARCHITECTURE.md) - Detailed system architecture
 - [Security Guide](docs/SECURITY.md) - Security practices and guidelines
+- [Supply Chain Guide](docs/SUPPLY_CHAIN.md) - Containerization, scanning, SBOMs, and signing workflows
 
 ## Support
 

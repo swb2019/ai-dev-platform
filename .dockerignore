@@ -1,0 +1,25 @@
+# VCS
+.git
+.gitignore
+
+# Dependencies and caches
+node_modules
+.pnpm-store
+.turbo
+apps/web/.next
+
+# Environment & secrets
+.env
+.env.*
+
+# Build outputs
+.next
+out
+build
+dist
+coverage
+artifacts
+
+# IDE
+.vscode
+.idea
