@@ -21,7 +21,22 @@
       ],
       "settings": {
         "editor.formatOnSave": true,
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "terminal.integrated.profiles.linux": {
+          "bash (onboard)": {
+            "path": "/bin/bash",
+            "args": [
+              "-lc",
+              "WORKSPACE_DIR=\"${DEVCONTAINER_WORKSPACE_FOLDER:-/workspaces/ai-dev-platform}\"; if [ ! -f \"$WORKSPACE_DIR/.onboarding_complete\" ]; then bash \"$WORKSPACE_DIR/scripts/onboard.sh\"; fi; exec bash"
+            ],
+            "overrideName": true
+          },
+          "bash": {
+            "path": "/bin/bash",
+            "args": ["-l"]
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "bash (onboard)"
       }
     }
   }
