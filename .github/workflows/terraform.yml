@@ -1,0 +1,157 @@
+name: Terraform Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/terraform/**"
+  workflow_dispatch:
+
+env:
+  TF_VERSION: "1.8.5"
+  TF_WORKING_DIR: infra/terraform/envs/prod
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive repository variables
+        run: |
+          echo "TF_VAR_project_id=${{ secrets.GCP_PROJECT_ID }}" >> $GITHUB_ENV
+          echo "TF_VAR_region=${{ secrets.GCP_REGION }}" >> $GITHUB_ENV
+          echo "TF_VAR_location=${{ secrets.GCP_LOCATION }}" >> $GITHUB_ENV
+          echo "TF_VAR_github_org=${GITHUB_REPOSITORY%/*}" >> $GITHUB_ENV
+          echo "TF_VAR_github_repo=${GITHUB_REPOSITORY#*/}" >> $GITHUB_ENV
+          echo "TF_VAR_artifact_registry_repo=${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}" >> $GITHUB_ENV
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Configure gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: "beta"
+
+      - name: Prepare backend configuration
+        run: |
+          cat <<BACKEND > backend.auto.tfbackend
+          bucket  = "${{ secrets.GCP_TF_STATE_BUCKET }}"
+          prefix  = "${{ secrets.GCP_TF_STATE_PREFIX }}"
+          project = "${{ secrets.GCP_PROJECT_ID }}"
+          location = "${{ secrets.GCP_REGION }}"
+          BACKEND
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          GOOGLE_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Terraform Format
+        run: terraform fmt -check
+        working-directory: infra/terraform
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -out=tfplan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Show Plan Summary
+        run: terraform show -no-color tfplan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+
+  apply:
+    name: Terraform Apply
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive repository variables
+        run: |
+          echo "TF_VAR_project_id=${{ secrets.GCP_PROJECT_ID }}" >> $GITHUB_ENV
+          echo "TF_VAR_region=${{ secrets.GCP_REGION }}" >> $GITHUB_ENV
+          echo "TF_VAR_location=${{ secrets.GCP_LOCATION }}" >> $GITHUB_ENV
+          echo "TF_VAR_github_org=${GITHUB_REPOSITORY%/*}" >> $GITHUB_ENV
+          echo "TF_VAR_github_repo=${GITHUB_REPOSITORY#*/}" >> $GITHUB_ENV
+          echo "TF_VAR_artifact_registry_repo=${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}" >> $GITHUB_ENV
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Configure gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: "beta"
+
+      - name: Prepare backend configuration
+        run: |
+          cat <<BACKEND > backend.auto.tfbackend
+          bucket  = "${{ secrets.GCP_TF_STATE_BUCKET }}"
+          prefix  = "${{ secrets.GCP_TF_STATE_PREFIX }}"
+          project = "${{ secrets.GCP_PROJECT_ID }}"
+          location = "${{ secrets.GCP_REGION }}"
+          BACKEND
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        run: terraform plan -input=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve
+        working-directory: ${{ env.TF_WORKING_DIR }}

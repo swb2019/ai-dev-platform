@@ -1,0 +1,90 @@
+name: Build & Deploy Web
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/web/**"
+      - "deploy/k8s/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: web
+  KUSTOMIZE_OVERLAY: deploy/k8s/overlays/prod
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Configure gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: "gke-gcloud-auth-plugin"
+
+      - name: Configure Docker authentication
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          IMAGE_REGISTRY="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}"
+          IMAGE_URI="$IMAGE_REGISTRY/${{ env.IMAGE_NAME }}:${GITHUB_SHA}"
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+          echo "IMAGE_REGISTRY=$IMAGE_REGISTRY" >> $GITHUB_ENV
+
+      - name: Build image
+        run: |
+          docker build -f apps/web/Dockerfile -t "$IMAGE_URI" .
+
+      - name: Push image
+        run: docker push "$IMAGE_URI"
+        env:
+          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
+
+      - name: Install kustomize
+        run: |
+          curl -sLo kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz
+          tar -xzf kustomize.tar.gz
+          sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Update Kubernetes manifests
+        run: |
+          cd $KUSTOMIZE_OVERLAY
+          kustomize edit set image app-image=$IMAGE_URI
+          sed -i "s|replace-me-gsa@project-id.iam.gserviceaccount.com|${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}|g" service-account-patch.yaml
+        env:
+          KUSTOMIZE_OVERLAY: ${{ env.KUSTOMIZE_OVERLAY }}
+          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          cluster_name: ${{ vars.GKE_CLUSTER_NAME }}
+          location: ${{ secrets.GCP_LOCATION }}
+
+      - name: Deploy to GKE
+        run: kubectl apply -k $KUSTOMIZE_OVERLAY
+        env:
+          KUSTOMIZE_OVERLAY: ${{ env.KUSTOMIZE_OVERLAY }}
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/web -n ai-dev-platform --timeout=5m

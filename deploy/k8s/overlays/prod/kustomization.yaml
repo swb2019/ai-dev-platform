@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: app-image
+    newName: REGISTRY/ai-dev-platform/web
+    newTag: latest
+
+patchesStrategicMerge:
+  - replicas.yaml
+  - service-account-patch.yaml
