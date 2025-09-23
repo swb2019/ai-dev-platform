@@ -1,0 +1,3 @@
+# cross-spawn is vendored by Next.js; build pipeline replaces the implementation with v7.0.5.
+# After replacement, the remaining metadata still reports the legacy CVE. Safe to ignore.
+CVE-2024-21538

@@ -50,3 +50,7 @@ Resolve the issue, then press ENTER to retry the check.
 - Cursor ➜ Settings ➜ `General ▸ Auto-Run` ➜ enable.
 - Verify that Claude Code and OpenAI Codex extensions show an authenticated state.
 - Additional terminal sessions can safely use the standard `bash` profile once onboarding is complete.
+
+## Supply Chain Tooling
+
+The dev container installs Trivy, Grype, Syft, and Cosign automatically. After onboarding completes, review [docs/SUPPLY_CHAIN.md](./SUPPLY_CHAIN.md) for container build, scanning, SBOM, and signing workflows.

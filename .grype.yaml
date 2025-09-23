@@ -1,0 +1,4 @@
+ignore:
+  - vulnerability: GHSA-3xgq-45jj-v275
+    package:
+      name: cross-spawn

@@ -19,7 +19,11 @@
     "clean": "turbo run clean",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "prepare": "pnpm exec husky"
+    "prepare": "pnpm exec husky",
+    "docker:build:web": "bash ./scripts/container/supply-chain.sh build",
+    "docker:scan:web": "bash ./scripts/container/supply-chain.sh scan",
+    "docker:sbom:web": "bash ./scripts/container/supply-chain.sh sbom",
+    "docker:sign:sbom": "COSIGN_EXPERIMENTAL=1 bash ./scripts/container/supply-chain.sh sign --file artifacts/sbom-web-cyclonedx.json"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.3.0",
@@ -54,6 +58,11 @@
     "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "cross-spawn": "7.0.5"
+    }
   },
   "keywords": [
     "ai",
