@@ -170,6 +170,28 @@ ADCMSG
   done
 }
 
+create_bucket_if_missing() {
+  local bucket_name="$1"
+  local bucket_location="$2"
+  local project_id="$3"
+
+  require_command gcloud "Install the Google Cloud SDK from https://cloud.google.com/sdk/docs/install"
+  ensure_gcloud_adc
+
+  if gcloud storage buckets describe "gs://${bucket_name}" --project "${project_id}" >/dev/null 2>&1; then
+    printf '[onboard] Terraform state bucket gs://%s already exists.\n' "${bucket_name}"
+    return
+  fi
+
+  printf '[onboard] Creating Terraform state bucket gs://%s (location: %s)...\n' "${bucket_name}" "${bucket_location}"
+  gcloud storage buckets create "gs://${bucket_name}" \
+    --project "${project_id}" \
+    --location "${bucket_location}" \
+    --uniform-bucket-level-access >/dev/null
+  gcloud storage buckets update "gs://${bucket_name}" --project "${project_id}" --versioning >/dev/null
+  printf '[onboard] Bucket gs://%s created with versioning enabled.\n' "${bucket_name}"
+}
+
 run_terraform_apply() {
   local tf_dir="$1"
   local project_id="$2"
@@ -296,23 +318,25 @@ EOT
   if [[ -f "${backend_path}" ]]; then
     printf '[onboard] %s already exists. Remove it to regenerate.\n' "${backend_path}"
   else
+    local default_bucket="${backend_project}-tfstate"
     cat <<'BUCKETINFO'
-[onboard] Terraform state requires a Google Cloud Storage bucket (versioning recommended).
-If you do not already have one, run:
-  gcloud storage buckets create gs://<bucket-name> --project ${backend_project} --location <region> --uniform-bucket-level-access
-Then enable versioning:
-  gcloud storage buckets update gs://<bucket-name> --versioning
+[onboard] Terraform state uses a Google Cloud Storage bucket. Accept the default name below or provide
+your own. If the bucket does not exist, the script will create it (uniform bucket-level access + versioning).
 BUCKETINFO
-    read -rp "Terraform state bucket name (e.g. gs://ai-dev-platform-tfstate): " state_bucket
+    read -rp "Terraform state bucket name [${default_bucket}]: " state_bucket
+    state_bucket=${state_bucket:-${default_bucket}}
     state_bucket=${state_bucket#gs://}
     read -rp "Terraform state prefix [ai-dev-platform/prod]: " state_prefix
     read -rp "Terraform state location/region [US]: " state_location
+    local bucket_location="${state_location:-US}"
+
+    create_bucket_if_missing "${state_bucket}" "${bucket_location}" "${backend_project}"
 
     cat <<EOT >"${backend_path}"
 bucket  = "${state_bucket}"
 prefix  = "${state_prefix:-ai-dev-platform/prod}"
 project = "${backend_project}"
-location = "${state_location:-US}"
+location = "${bucket_location}"
 EOT
     printf '[onboard] Created %s\n' "${backend_path}"
   fi
