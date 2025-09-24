@@ -195,6 +195,35 @@ install_claude_code_cli() {
   fi
 }
 
+install_gcloud_sdk() {
+  if command -v gcloud >/dev/null 2>&1; then
+    log "gcloud CLI already installed"
+    return
+  fi
+
+  log "Installing Google Cloud CLI"
+
+  ensure_command curl curl
+  ensure_command apt-transport-https apt-transport-https
+  ensure_command ca-certificates ca-certificates
+  ensure_command gnupg gnupg
+
+  local keyring="/usr/share/keyrings/google-cloud-archive-keyring.gpg"
+  if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee "$keyring" >/dev/null
+    sudo chmod 644 "$keyring"
+    echo "deb [signed-by=${keyring}] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list >/dev/null
+    sudo apt-get update -y >/dev/null
+    sudo apt-get install -y google-cloud-cli >/dev/null
+  else
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | tee "$keyring" >/dev/null
+    chmod 644 "$keyring"
+    echo "deb [signed-by=${keyring}] https://packages.cloud.google.com/apt cloud-sdk main" | tee /etc/apt/sources.list.d/google-cloud-sdk.list >/dev/null
+    apt-get update -y >/dev/null
+    apt-get install -y google-cloud-cli >/dev/null
+  fi
+}
+
 install_trivy() {
   if command -v trivy >/dev/null 2>&1; then
     log "Trivy already installed"
@@ -636,6 +665,7 @@ main() {
   install_grype
   install_syft
   install_cosign
+  install_gcloud_sdk
   install_claude_code_cli
   install_cursor_openai_codex_extension
   configure_git
