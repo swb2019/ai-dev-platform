@@ -5,10 +5,17 @@ resources:
   - namespace.yaml
   - service.yaml
   - deployment.yaml
+  - gateway.yaml
+  - httproute.yaml
+  - api-gateway/deployment.yaml
+  - api-gateway/service.yaml
+  - api-gateway/networkpolicy.yaml
 
 images:
-  - name: app-image
-    newName: REPLACE_ME_IMAGE
+  - name: web-image
+    newName: REPLACE_ME_WEB_IMAGE
+  - name: api-gateway-image
+    newName: REPLACE_ME_API_GATEWAY_IMAGE
 
 configMapGenerator:
   - name: web-config

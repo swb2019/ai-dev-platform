@@ -35,3 +35,9 @@ variable "provider_id" {
   type        = string
   default     = null
 }
+
+variable "attribute_condition" {
+  description = "Optional custom attribute condition expression for the provider"
+  type        = string
+  default     = null
+}

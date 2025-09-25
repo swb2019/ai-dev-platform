@@ -1,0 +1,7 @@
+artifact_registry_repository = "projects/ai-dev-platform-1/locations/us-central1/repositories/ai-dev-platform-prod"
+github_service_account_email = "github-terraform-prod@ai-dev-platform-1.iam.gserviceaccount.com"
+gke_cluster_location = "us-central1"
+gke_cluster_name = "ai-dev-prod-autopilot"
+runtime_service_account_email = "web-runtime-prod@ai-dev-platform-1.iam.gserviceaccount.com"
+api_gateway_runtime_service_account_email = "api-gateway-runtime-prod@ai-dev-platform-1.iam.gserviceaccount.com"
+workload_identity_pool_provider = "projects/115482058060/locations/global/workloadIdentityPools/github-wif-pool-prod/providers/github-provider-prod"

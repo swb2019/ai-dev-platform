@@ -3,27 +3,54 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-DEFAULT_IMAGE_TAG="ai-dev-platform/web:local"
 ARTIFACT_DIR="${REPO_ROOT}/artifacts"
-SBOM_PATH="${ARTIFACT_DIR}/sbom-web-cyclonedx.json"
+SERVICE_NAME="web"
+DEFAULT_IMAGE_TAG=""
+IMAGE_TAG=""
+TARGET_FILE=""
+SBOM_PATH=""
+DOCKERFILE=""
+
+configure_service() {
+  case "$SERVICE_NAME" in
+    web)
+      DEFAULT_IMAGE_TAG="ai-dev-platform/web:local"
+      SBOM_PATH="${ARTIFACT_DIR}/sbom-web-cyclonedx.json"
+      DOCKERFILE="apps/web/Dockerfile"
+      ;;
+    api-gateway)
+      DEFAULT_IMAGE_TAG="ai-dev-platform/api-gateway:local"
+      SBOM_PATH="${ARTIFACT_DIR}/sbom-api-gateway-cyclonedx.json"
+      DOCKERFILE="apps/api-gateway/Dockerfile"
+      ;;
+    *)
+      echo "[supply-chain] Unsupported service '${SERVICE_NAME}'." >&2
+      exit 1
+      ;;
+  esac
+}
 
 usage() {
   cat <<'USAGE'
 Usage: supply-chain.sh <command> [options]
 
 Commands:
-  build [--tag <image-tag>]        Build the web application container image.
-  scan  [--tag <image-tag>]        Run Trivy and Grype vulnerability scans against the image.
-  sbom  [--tag <image-tag>]        Generate a CycloneDX SBOM for the image with Syft.
+  build [--service <name>] [--tag <image-tag>]        Build the container image for the given service.
+  scan  [--service <name>] [--tag <image-tag>]        Run Trivy and Grype vulnerability scans against the image.
+  sbom  [--service <name>] [--tag <image-tag>]        Generate a CycloneDX SBOM for the image with Syft.
   sign  --file <path>              Keyless-sign an artifact (SBOM, tarball, etc.) with Cosign.
+
+Services:
+  web (default)
+  api-gateway
 
 Environment:
   COSIGN_EXPERIMENTAL=1            Required for keyless signing with Cosign.
 
 Examples:
-  supply-chain.sh build --tag ai-dev-platform/web:dev
-  supply-chain.sh scan
-  supply-chain.sh sbom --tag ghcr.io/example/ai-dev-platform-web:latest
+  supply-chain.sh build --service api-gateway --tag ai-dev-platform/api-gateway:dev
+  supply-chain.sh scan --service web
+  supply-chain.sh sbom --service api-gateway --tag ghcr.io/example/ai-dev-platform/api-gateway:latest
   supply-chain.sh sign --file artifacts/sbom-web-cyclonedx.json
 USAGE
 }
@@ -37,12 +64,14 @@ ensure_command() {
 }
 
 parse_args() {
-  local opt
-  IMAGE_TAG="$DEFAULT_IMAGE_TAG"
-  TARGET_FILE=""
+  POSITIONAL_ARGS=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --service)
+        SERVICE_NAME="$2"
+        shift 2
+        ;;
       --tag)
         IMAGE_TAG="$2"
         shift 2
@@ -61,13 +90,19 @@ parse_args() {
         ;;
     esac
   done
+
+  configure_service
+
+  if [[ -z "$IMAGE_TAG" ]]; then
+    IMAGE_TAG="$DEFAULT_IMAGE_TAG"
+  fi
 }
 
 run_build() {
   ensure_command docker
-  echo "[supply-chain] Building image '${IMAGE_TAG}' from ${REPO_ROOT}".
+  echo "[supply-chain] Building image '${IMAGE_TAG}' for service '${SERVICE_NAME}'."
   docker build \
-    --file "${REPO_ROOT}/apps/web/Dockerfile" \
+    --file "${REPO_ROOT}/${DOCKERFILE}" \
     --tag "${IMAGE_TAG}" \
     "${REPO_ROOT}"
 }
@@ -75,13 +110,13 @@ run_build() {
 run_scan() {
   ensure_command trivy
   ensure_command grype
-  echo "[supply-chain] Running Trivy vulnerability scan on '${IMAGE_TAG}'."
+  echo "[supply-chain] Running Trivy vulnerability scan on '${IMAGE_TAG}' for service '${SERVICE_NAME}'."
   local -a trivy_args=(image --exit-code 1 --severity HIGH,CRITICAL)
   if [ -f "${REPO_ROOT}/.trivyignore" ]; then
     trivy_args+=(--ignorefile "${REPO_ROOT}/.trivyignore")
   fi
   trivy "${trivy_args[@]}" "${IMAGE_TAG}"
-  echo "[supply-chain] Running Grype vulnerability scan on '${IMAGE_TAG}'."
+  echo "[supply-chain] Running Grype vulnerability scan on '${IMAGE_TAG}' for service '${SERVICE_NAME}'."
   local -a grype_args=("${IMAGE_TAG}" --fail-on High)
   if [ -f "${REPO_ROOT}/.grype.yaml" ]; then
     grype_args+=(--config "${REPO_ROOT}/.grype.yaml")
@@ -92,7 +127,7 @@ run_scan() {
 run_sbom() {
   ensure_command syft
   mkdir -p "${ARTIFACT_DIR}"
-  echo "[supply-chain] Generating SBOM at ${SBOM_PATH} for image '${IMAGE_TAG}'."
+  echo "[supply-chain] Generating SBOM at ${SBOM_PATH} for image '${IMAGE_TAG}' (service '${SERVICE_NAME}')."
   syft "${IMAGE_TAG}" -o cyclonedx-json > "${SBOM_PATH}"
   echo "[supply-chain] SBOM generated: ${SBOM_PATH}"
 }

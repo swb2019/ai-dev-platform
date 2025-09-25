@@ -28,7 +28,7 @@ variable "github_repo" {
 variable "environment" {
   description = "Deployment environment identifier"
   type        = string
-  default     = "prod"
+  default     = "staging"
 }
 
 variable "cluster_name" {

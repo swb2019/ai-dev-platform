@@ -6,10 +6,10 @@ resources:
 
 images:
   - name: web-image
-    newName: REGISTRY/ai-dev-platform-prod/web
+    newName: REGISTRY/ai-dev-platform-staging/web
     newTag: latest
   - name: api-gateway-image
-    newName: REGISTRY/ai-dev-platform-prod/api-gateway
+    newName: REGISTRY/ai-dev-platform-staging/api-gateway
     newTag: latest
 
 patchesStrategicMerge:

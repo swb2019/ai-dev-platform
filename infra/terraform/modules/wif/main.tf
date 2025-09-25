@@ -10,11 +10,12 @@ terraform {
 locals {
   pool_id     = var.pool_id != null ? var.pool_id : "github-wif-pool"
   provider_id = var.provider_id != null ? var.provider_id : "github-provider"
+  default_attribute_condition = "attribute.repository == '${var.github_repository}' && (attribute.ref == 'refs/heads/main' || (attribute.ref != null && attribute.ref.matches('^refs/pull/.*')))"
+  attribute_condition         = var.attribute_condition != null ? var.attribute_condition : local.default_attribute_condition
 }
 
 resource "google_iam_workload_identity_pool" "this" {
   project                   = var.project_id
-  location                  = "global"
   workload_identity_pool_id = local.pool_id
   display_name              = "GitHub Actions"
   description               = "OIDC federation for GitHub Actions to access ${var.project_id}"
@@ -38,7 +39,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.ref"        = "assertion.ref"
   }
 
-  attribute_condition = "attribute.repository == '${var.github_repository}'"
+  attribute_condition = local.attribute_condition
 }
 
 resource "google_service_account" "github" {

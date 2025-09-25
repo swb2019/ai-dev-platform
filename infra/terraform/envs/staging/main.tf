@@ -9,7 +9,7 @@ locals {
   github_workload_identity_sa_id = coalesce(var.github_workload_identity_sa_id, "github-terraform-${var.environment}")
   workload_identity_pool_id      = coalesce(var.workload_identity_pool_id, "github-wif-pool-${var.environment}")
   workload_identity_provider_id  = coalesce(var.workload_identity_provider_id, "github-provider-${var.environment}")
-  wif_attribute_condition        = "attribute.repository == '${local.repository_full_name}' && (attribute.ref != null && attribute.ref.matches('^refs/tags/v.*'))"
+  wif_attribute_condition        = "attribute.repository == '${local.repository_full_name}' && (attribute.ref == 'refs/heads/main' || (attribute.ref != null && attribute.ref.matches('^refs/pull/.*')))"
 }
 
 resource "google_project_service" "required" {

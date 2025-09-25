@@ -32,7 +32,7 @@ resource "google_compute_subnetwork" "secondary" {
   network                  = google_compute_network.this.id
   purpose                  = "REGIONAL_MANAGED_PROXY"
   role                     = "ACTIVE"
-  private_ip_google_access = true
+  private_ip_google_access = false
 }
 
 resource "google_compute_router" "this" {

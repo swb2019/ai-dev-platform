@@ -35,14 +35,6 @@ resource "google_container_cluster" "this" {
     channel = var.release_channel
   }
 
-  cluster_autoscaling {
-    auto_provisioning_defaults {
-      oauth_scopes = [
-        "https://www.googleapis.com/auth/cloud-platform"
-      ]
-    }
-  }
-
   workload_identity_config {
     workload_pool = local.identity_namespace
   }
@@ -64,10 +56,7 @@ resource "google_container_cluster" "this" {
     }
   }
 
-  autopilot {
-    enabled = true
-  }
-
+  enable_autopilot    = true
   deletion_protection = var.enable_deletion_protection
 
   logging_config {
@@ -83,20 +72,10 @@ resource "google_container_cluster" "this" {
   }
 
   maintenance_policy {
-    recurring_window {
-      window {
-        daily_maintenance_window {
-          start_time = var.maintenance_start_time
-        }
-      }
+    daily_maintenance_window {
+      start_time = var.maintenance_start_time
     }
   }
-
-  enable_shielded_nodes = true
-}
-
-resource "google_container_attached_cluster" "forbidden" {
-  count = 0
 }
 
 resource "google_service_account_iam_member" "github_wif" {

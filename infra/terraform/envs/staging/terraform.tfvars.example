@@ -1,0 +1,17 @@
+project_id      = "your-staging-gcp-project-id"
+region          = "us-central1"
+location        = "us-central1"
+github_org      = "your-github-org"
+github_repo     = "ai-dev-platform"
+release_channel = "REGULAR"
+
+# Optional overrides when customised naming is required
+# environment                     = "staging"
+# cluster_name                    = "ai-dev-staging-autopilot"
+# network_name                    = "ai-dev-staging"
+# artifact_registry_repo          = "ai-dev-platform-staging"
+# runtime_service_account_id      = "web-runtime-staging"
+# api_gateway_runtime_service_account_id = "api-gateway-runtime-staging"
+# github_workload_identity_sa_id  = "github-terraform-staging"
+# workload_identity_pool_id       = "github-wif-pool-staging"
+# workload_identity_provider_id   = "github-provider-staging"

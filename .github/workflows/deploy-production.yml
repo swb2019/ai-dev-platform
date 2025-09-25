@@ -1,0 +1,116 @@
+name: Deploy Platform (production)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+env:
+  KUSTOMIZE_OVERLAY: deploy/k8s/overlays/prod
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Configure gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: "gke-gcloud-auth-plugin"
+
+      - name: Configure Docker authentication
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          IMAGE_REGISTRY="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}"
+          WEB_IMAGE_URI="$IMAGE_REGISTRY/web:${GITHUB_SHA}"
+          API_IMAGE_URI="$IMAGE_REGISTRY/api-gateway:${GITHUB_SHA}"
+          echo "image_registry=$IMAGE_REGISTRY" >> $GITHUB_OUTPUT
+          echo "web_image_uri=$WEB_IMAGE_URI" >> $GITHUB_OUTPUT
+          echo "api_image_uri=$API_IMAGE_URI" >> $GITHUB_OUTPUT
+          echo "IMAGE_REGISTRY=$IMAGE_REGISTRY" >> $GITHUB_ENV
+
+      - name: Build web image
+        run: docker build -f apps/web/Dockerfile -t "${{ steps.meta.outputs.web_image_uri }}" .
+
+      - name: Build api-gateway image
+        run: docker build -f apps/api-gateway/Dockerfile -t "${{ steps.meta.outputs.api_image_uri }}" .
+
+      - name: Push web image
+        run: docker push "${{ steps.meta.outputs.web_image_uri }}"
+
+      - name: Push api-gateway image
+        run: docker push "${{ steps.meta.outputs.api_image_uri }}"
+
+      - name: Resolve web image digest
+        id: web_digest
+        run: |
+          IMAGE_DIGEST=$(gcloud artifacts docker images describe ${{ steps.meta.outputs.web_image_uri }} --format='value(image_summary.digest)')
+          IMAGE_WITH_DIGEST="${{ steps.meta.outputs.image_registry }}/web@$IMAGE_DIGEST"
+          echo "image_digest=$IMAGE_DIGEST" >> $GITHUB_OUTPUT
+          echo "image_with_digest=$IMAGE_WITH_DIGEST" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Resolve api-gateway image digest
+        id: api_digest
+        run: |
+          IMAGE_DIGEST=$(gcloud artifacts docker images describe ${{ steps.meta.outputs.api_image_uri }} --format='value(image_summary.digest)')
+          IMAGE_WITH_DIGEST="${{ steps.meta.outputs.image_registry }}/api-gateway@$IMAGE_DIGEST"
+          echo "image_digest=$IMAGE_DIGEST" >> $GITHUB_OUTPUT
+          echo "image_with_digest=$IMAGE_WITH_DIGEST" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Install kustomize
+        run: |
+          curl -sLo kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz
+          tar -xzf kustomize.tar.gz
+          sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Update Kubernetes manifests
+        run: |
+          cd $KUSTOMIZE_OVERLAY
+          kustomize edit set image web-image=${{ steps.web_digest.outputs.image_with_digest }}
+          kustomize edit set image api-gateway-image=${{ steps.api_digest.outputs.image_with_digest }}
+          sed -i "s|replace-me-prod-gsa@project-id.iam.gserviceaccount.com|${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}|g" service-account-patch.yaml
+          sed -i "s|replace-me-prod-api-gsa@project-id.iam.gserviceaccount.com|${{ secrets.GCP_API_GATEWAY_SERVICE_ACCOUNT }}|g" service-account-patch.yaml
+        env:
+          KUSTOMIZE_OVERLAY: ${{ env.KUSTOMIZE_OVERLAY }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          cluster_name: ${{ vars.GKE_CLUSTER_NAME }}
+          location: ${{ secrets.GCP_LOCATION }}
+
+      - name: Deploy to GKE
+        run: kubectl apply -k $KUSTOMIZE_OVERLAY
+        env:
+          KUSTOMIZE_OVERLAY: ${{ env.KUSTOMIZE_OVERLAY }}
+
+      - name: Wait for web rollout
+        run: kubectl rollout status deployment/web -n ai-dev-platform --timeout=5m
+
+      - name: Wait for api-gateway rollout
+        run: kubectl rollout status deployment/api-gateway -n ai-dev-platform --timeout=5m
+
+      - name: Describe Gateway status
+        run: kubectl get gateway web-gateway -n ai-dev-platform -o wide
