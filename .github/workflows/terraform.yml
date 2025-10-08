@@ -27,7 +27,7 @@ env:
 jobs:
   plan:
     name: Plan (staging)
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ github.event_name == 'pull_request' && secrets.TERRAFORM_SERVICE_ACCOUNT != '' }}
     runs-on: ubuntu-latest
     environment: staging
     concurrency:

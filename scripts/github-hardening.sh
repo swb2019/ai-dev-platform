@@ -79,6 +79,10 @@ load_config_if_present() {
     source "$path"
   fi
 }
+heading() {
+  printf '\n==> %s\n' "$1"
+}
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 
@@ -192,6 +196,7 @@ enable_security_features() {
   local payload response
   payload='{
   "delete_branch_on_merge": true,
+  "allow_auto_merge": true,
   "security_and_analysis": {
     "advanced_security": {"status": "enabled"},
     "dependabot_security_updates": {"status": "enabled"},
@@ -230,6 +235,7 @@ JSON
       echo "   Warning: unable to configure CodeQL default setup (check permissions or enable CodeQL manually)." >&2
     fi
   fi
+
 }
 
 configure_branch_protection() {

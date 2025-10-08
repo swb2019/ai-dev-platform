@@ -41,6 +41,10 @@ AI Dev Platform is a monorepo that packages a Next.js marketing application, sha
 
 > Prefer running the steps individually? Execute `scripts/onboard.sh`, `scripts/bootstrap-infra.sh`, and `scripts/github-hardening.sh` in that order.
 
+## Change Workflow
+
+- After your branch is ready, run `./scripts/push-pr.sh`. It runs lint/type-check/test/e2e locally, pushes the branch, opens a PR against main, and enables auto-merge so GitHub waits for all protected-branch checks before merging.
+
 ## CI/CD Overview
 
 - `.github/workflows/deploy-staging.yml` builds, scans, signs, and deploys the web image, then discovers the Gateway IP with `kubectl` and runs Playwright E2E tests (`e2e-validation` job) against the live staging environment.

@@ -148,11 +148,10 @@ cmd_sign() {
   fi
 
   echo "Signing image $IMAGE_REF with Cosign (keyless)"
-  COSIGN_YES="${COSIGN_YES:-true}" COSIGN_EXPERIMENTAL=1 cosign sign --keyless "$IMAGE_REF"
+  COSIGN_YES="${COSIGN_YES:-true}" COSIGN_EXPERIMENTAL=1 cosign sign "$IMAGE_REF"
 
   echo "Attesting image $IMAGE_REF with SBOM predicate"
   COSIGN_YES="${COSIGN_YES:-true}" COSIGN_EXPERIMENTAL=1 cosign attest \
-    --keyless \
     --type cyclonedx \
     --predicate "$SBOM_OUTPUT" \
     "$IMAGE_REF"
