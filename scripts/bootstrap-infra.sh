@@ -482,6 +482,7 @@ set_env_variable() {
 
 sync_github_environment() {
   local env_name="${1:-}"
+  local tf_env_name="${2:-$env_name}"
   if [[ -z "$env_name" ]]; then
     echo "Environment name is required for sync_github_environment." >&2
     return 1
@@ -489,7 +490,7 @@ sync_github_environment() {
   local ksa_namespace ksa_name attestors_input attestors_json
   local terraform_sa runtime_sa wif_provider wif_provider_id wif_pool cluster_name cluster_endpoint gke_location
 
-  if [[ -z "${TERRAFORM_OUTPUTS_JSON[$env_name]:-}" ]]; then
+  if [[ -z "${TERRAFORM_OUTPUTS_JSON[$tf_env_name]:-}" ]]; then
     echo "Skipping GitHub environment sync for $env_name (no Terraform outputs captured)."
     return
   fi
@@ -526,37 +527,37 @@ sync_github_environment() {
     exit 1
   }
 
-  if ! terraform_sa="$(extract_output_value "$env_name" terraform_service_account_email)"; then
+  if ! terraform_sa="$(extract_output_value "$tf_env_name" terraform_service_account_email)"; then
     echo "Missing terraform_service_account_email output for $env_name." >&2
     return 1
   fi
 
-  if ! wif_provider="$(extract_output_value "$env_name" wif_provider_name)"; then
+  if ! wif_provider="$(extract_output_value "$tf_env_name" wif_provider_name)"; then
     echo "Missing wif_provider_name output for $env_name." >&2
     return 1
   fi
 
-  if ! runtime_sa="$(extract_output_value "$env_name" runtime_service_account_email)"; then
+  if ! runtime_sa="$(extract_output_value "$tf_env_name" runtime_service_account_email)"; then
     runtime_sa=""
   fi
 
-  if ! wif_provider_id="$(extract_output_value "$env_name" wif_provider_id)"; then
+  if ! wif_provider_id="$(extract_output_value "$tf_env_name" wif_provider_id)"; then
     wif_provider_id=""
   fi
 
-  if ! wif_pool="$(extract_output_value "$env_name" wif_pool_name)"; then
+  if ! wif_pool="$(extract_output_value "$tf_env_name" wif_pool_name)"; then
     wif_pool=""
   fi
 
-  if ! cluster_name="$(extract_output_value "$env_name" cluster_name)"; then
+  if ! cluster_name="$(extract_output_value "$tf_env_name" cluster_name)"; then
     cluster_name=""
   fi
 
-  if ! cluster_endpoint="$(extract_output_value "$env_name" cluster_endpoint)"; then
+  if ! cluster_endpoint="$(extract_output_value "$tf_env_name" cluster_endpoint)"; then
     cluster_endpoint=""
   fi
 
-  if ! gke_location="$(extract_output_value "$env_name" gke_location)"; then
+  if ! gke_location="$(extract_output_value "$tf_env_name" gke_location)"; then
     gke_location="$GCP_REGION"
   fi
 
@@ -684,17 +685,23 @@ ensure_application_default_credentials() {
 
 
 configure_github_environments() {
-  for env_name in staging prod; do
-    if env_was_skipped "$env_name"; then
+  local env_name tf_env_name
+  for env_name in staging production; do
+    if [[ "$env_name" == "production" ]]; then
+      tf_env_name="prod"
+    else
+      tf_env_name="$env_name"
+    fi
+    if env_was_skipped "$tf_env_name"; then
       echo "Skipping GitHub environment configuration for $env_name (terraform apply skipped)."
       continue
     fi
-    if [[ -z "${TERRAFORM_OUTPUTS_JSON[$env_name]:-}" ]]; then
+    if [[ -z "${TERRAFORM_OUTPUTS_JSON[$tf_env_name]:-}" ]]; then
       echo "Terraform outputs missing for $env_name; run capture_terraform_outputs first." >&2
       continue
     fi
     echo "Updating GitHub environment secrets for $env_name..."
-    sync_github_environment "$env_name"
+    sync_github_environment "$env_name" "$tf_env_name"
   done
 }
 

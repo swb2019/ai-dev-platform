@@ -53,28 +53,28 @@ infisical_installed() {
 }
 
 can_reach_host() {
-  local host=""
-  if [[ -z "" ]]; then
+  local host="${1:-}"
+  if [[ -z "$host" ]]; then
     return 1
   fi
   if command -v getent >/dev/null 2>&1; then
-    if getent hosts "" >/dev/null 2>&1; then
+    if getent hosts "$host" >/dev/null 2>&1; then
       return 0
     fi
   fi
   if command -v nslookup >/dev/null 2>&1; then
-    if nslookup -timeout=3 "" >/dev/null 2>&1; then
+    if nslookup -timeout=3 "$host" >/dev/null 2>&1; then
       return 0
     fi
   fi
   if command -v curl >/dev/null 2>&1; then
     local url
-    if [[ "" == http*://* ]]; then
-      url=""
+    if [[ "$host" == http*://* ]]; then
+      url="$host"
     else
-      url="https://"
+      url="https://$host"
     fi
-    if curl -sS --head --max-time 5 --connect-timeout 3 "" >/dev/null 2>&1; then
+    if curl -sS --head --max-time 5 --connect-timeout 3 "$url" >/dev/null 2>&1; then
       return 0
     fi
   fi
@@ -93,13 +93,13 @@ install_infisical() {
   local registry_available=0
   local installer_available=0
 
-  if can_reach_host ""; then
+  if can_reach_host "$registry_host"; then
     registry_available=1
   else
     echo "registry.npmjs.org not reachable; skipping npm-based Infisical install."
   fi
 
-  if can_reach_host ""; then
+  if can_reach_host "$installer_host"; then
     installer_available=1
   else
     echo "cli.infisical.com not reachable; skipping curl-based Infisical install."
@@ -115,11 +115,11 @@ install_infisical() {
   if (( registry_available )); then
     local npm_cmd=(npm install -g @infisical/cli)
     if command -v timeout >/dev/null 2>&1; then
-      npm_cmd=(timeout 45 "")
+      npm_cmd=(timeout 45 "${npm_cmd[@]}")
     fi
-    if ""; then
+    if "${npm_cmd[@]}"; then
       install_success=1
-      [[ -d "/home/user/.npm-global/bin" ]] && export PATH="/home/user/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/Users/user/AppData/Local/Temp/.tmpbEjfj9:/mnt/c/Python313/Scripts/:/mnt/c/Python313/:/mnt/c/Program Files/Eclipse Adoptium/jdk-17.0.16.8-hotspot/bin:/mnt/c/Program Files (x86)/Razer/ChromaBroadcast/bin:/mnt/c/Program Files/Razer/ChromaBroadcast/bin:/mnt/c/Windows/system32:/mnt/c/Windows:/mnt/c/Windows/System32/Wbem:/mnt/c/Windows/System32/WindowsPowerShell/v1.0/:/mnt/c/Windows/System32/OpenSSH/:/mnt/c/Program Files/PuTTY/:/mnt/c/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/:/mnt/c/Program Files (x86)/Windows Kits/10/Microsoft Application Virtualization/Sequencer/:/mnt/c/Windows/system32/config/systemprofile/AppData/Local/Microsoft/WindowsApps:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/:/mnt/c/WINDOWS/System32/OpenSSH/:/mnt/c/Program Files/Perforce/:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/Program Files/dotnet/:/mnt/c/Program Files/Hashicorp/packer_1.13.1_windows_amd64:/mnt/c/Program Files/Hashicorp/terraform_1.12.2_windows_amd64:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/nodejs/:/mnt/c/Program Files/PowerShell/7/:/mnt/c/ProgramData/chocolatey/bin:/mnt/c/Program Files/Microsoft VS Code/bin:/mnt/c/Program Files/OpenJDK/jdk-22.0.2/bin:/mnt/c/Program Files/GitHub CLI/:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/Users/user/AppData/Local/pnpm:/mnt/c/test:/mnt/c/newpath:/mnt/c/Program Files/Elite-DevEnv/claude-code:/mnt/c/Program Files/Git/bin:/mnt/c/Users/user/.local/bin:/mnt/c/Users/user/AppData/Local/Programs/cursor/resources/app/bin:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/Users/user/.cursor/extensions/openai.chatgpt-0.4.15-universal/bin/windows-x86_64"
+      [[ -d "/home/user/.npm-global/bin" ]] && export PATH="/home/user/.npm-global/bin:$PATH"
     else
       echo "npm install for Infisical CLI failed; will try curl fallback."
     fi
@@ -142,7 +142,7 @@ install_infisical() {
   fi
 
   if (( install_success )); then
-    [[ -d "/home/user/.infisical/bin" ]] && export PATH="/home/user/.infisical/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/Users/user/AppData/Local/Temp/.tmpbEjfj9:/mnt/c/Python313/Scripts/:/mnt/c/Python313/:/mnt/c/Program Files/Eclipse Adoptium/jdk-17.0.16.8-hotspot/bin:/mnt/c/Program Files (x86)/Razer/ChromaBroadcast/bin:/mnt/c/Program Files/Razer/ChromaBroadcast/bin:/mnt/c/Windows/system32:/mnt/c/Windows:/mnt/c/Windows/System32/Wbem:/mnt/c/Windows/System32/WindowsPowerShell/v1.0/:/mnt/c/Windows/System32/OpenSSH/:/mnt/c/Program Files/PuTTY/:/mnt/c/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/:/mnt/c/Program Files (x86)/Windows Kits/10/Microsoft Application Virtualization/Sequencer/:/mnt/c/Windows/system32/config/systemprofile/AppData/Local/Microsoft/WindowsApps:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/:/mnt/c/WINDOWS/System32/OpenSSH/:/mnt/c/Program Files/Perforce/:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/Program Files/dotnet/:/mnt/c/Program Files/Hashicorp/packer_1.13.1_windows_amd64:/mnt/c/Program Files/Hashicorp/terraform_1.12.2_windows_amd64:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/nodejs/:/mnt/c/Program Files/PowerShell/7/:/mnt/c/ProgramData/chocolatey/bin:/mnt/c/Program Files/Microsoft VS Code/bin:/mnt/c/Program Files/OpenJDK/jdk-22.0.2/bin:/mnt/c/Program Files/GitHub CLI/:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/Users/user/AppData/Local/pnpm:/mnt/c/test:/mnt/c/newpath:/mnt/c/Program Files/Elite-DevEnv/claude-code:/mnt/c/Program Files/Git/bin:/mnt/c/Users/user/.local/bin:/mnt/c/Users/user/AppData/Local/Programs/cursor/resources/app/bin:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/Users/user/.cursor/extensions/openai.chatgpt-0.4.15-universal/bin/windows-x86_64"
+    [[ -d "/home/user/.infisical/bin" ]] && export PATH="/home/user/.infisical/bin:$PATH"
     if infisical_installed; then
       return 0
     fi

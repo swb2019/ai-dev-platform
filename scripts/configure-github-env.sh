@@ -9,7 +9,8 @@ Usage: scripts/configure-github-env.sh [--repo <owner/repo>] <environment>
 
 Creates or updates the GitHub Actions environment for staging or production.
 Defaults are sourced from Terraform outputs (if available) and
-.infra_bootstrap_state. You can accept each default or override interactively.
+.infra_bootstrap_state. Set AUTO_ACCEPT_DEFAULTS=0 to force prompts when defaults
+exist; by default detected values are applied automatically.
 USAGE
 }
 
@@ -74,6 +75,19 @@ REPO_SLUG=${REPO_SLUG%.git}
 if [[ -z "$REPO_SLUG" ]]; then
   echo "Unable to determine repository slug automatically. Pass --repo <owner/repo>." >&2
   exit 1
+fi
+
+AUTO_ACCEPT_DEFAULTS_RAW="${AUTO_ACCEPT_DEFAULTS:-1}"
+if [[ "$AUTO_ACCEPT_DEFAULTS_RAW" =~ ^(0|false|FALSE)$ ]]; then
+  AUTO_ACCEPT_DEFAULTS=0
+else
+  AUTO_ACCEPT_DEFAULTS=1
+fi
+
+if [[ -t 0 && -t 1 ]]; then
+  INTERACTIVE_SHELL=1
+else
+  INTERACTIVE_SHELL=0
 fi
 
 if ! command -v gh >/dev/null 2>&1; then
@@ -171,23 +185,55 @@ case "$ENVIRONMENT_CANONICAL" in
     ns_default="${STAGING_KSA_NAMESPACE:-web}"
     name_default="${STAGING_KSA_NAME:-web}"
     ba_default="${STAGING_BA_ATTESTORS:-}"
+    artifact_repo_id_default="stg-docker"
     ;;
   production)
     ns_default="${PRODUCTION_KSA_NAMESPACE:-web}"
     name_default="${PRODUCTION_KSA_NAME:-web}"
     ba_default="${PRODUCTION_BA_ATTESTORS:-}"
+    artifact_repo_id_default="prd-docker"
     ;;
   *)
     ns_default="web"
     name_default="web"
     ba_default=""
+    artifact_repo_id_default=""
     ;;
 esac
+
+env_project_var="${ENVIRONMENT_PREFIX}_GCP_PROJECT_ID"
+project_default="${!env_project_var:-${GCP_PROJECT_ID:-}}"
+
+env_location_var="${ENVIRONMENT_PREFIX}_GKE_LOCATION"
+region_default="${!env_location_var:-${GCP_REGION:-}}"
 
 ENV_DEFAULTS["${ENVIRONMENT_PREFIX}_RUNTIME_KSA_NAMESPACE"]="$ns_default"
 ENV_DEFAULTS["${ENVIRONMENT_PREFIX}_RUNTIME_KSA_NAME"]="$name_default"
 if [[ -n "$ba_default" ]]; then
   ENV_DEFAULTS["${ENVIRONMENT_PREFIX}_BA_ATTESTORS"]="$ba_default"
+fi
+
+if [[ -n "$project_default" && -z "${!env_project_var:-}" ]]; then
+  ENV_DEFAULTS["${ENVIRONMENT_PREFIX}_GCP_PROJECT_ID"]="$project_default"
+fi
+
+if [[ -n "$region_default" && -z "${!env_location_var:-}" ]]; then
+  ENV_DEFAULTS["${ENVIRONMENT_PREFIX}_GKE_LOCATION"]="$region_default"
+fi
+
+if [[ -n "$region_default" ]]; then
+  artifact_host_default="${region_default}-docker.pkg.dev"
+  env_host_var="${ENVIRONMENT_PREFIX}_ARTIFACT_REGISTRY_HOST"
+  if [[ -z "${!env_host_var:-}" ]]; then
+    ENV_DEFAULTS["${ENVIRONMENT_PREFIX}_ARTIFACT_REGISTRY_HOST"]="$artifact_host_default"
+  fi
+  if [[ -n "$project_default" && -n "$artifact_repo_id_default" ]]; then
+    env_image_var="${ENVIRONMENT_PREFIX}_IMAGE_REPO"
+    image_repo_default="${artifact_host_default}/${project_default}/${artifact_repo_id_default}/web"
+    if [[ -z "${!env_image_var:-}" ]]; then
+      ENV_DEFAULTS["${ENVIRONMENT_PREFIX}_IMAGE_REPO"]="$image_repo_default"
+    fi
+  fi
 fi
 
 for key in "${!ENV_DEFAULTS[@]}"; do
@@ -200,6 +246,7 @@ for key in "${!ENV_DEFAULTS[@]}"; do
   unset "ENV_DEFAULTS[$key]"
 
 done
+
 
 SECRET_KEYS=(
   "${ENVIRONMENT_PREFIX}_IMAGE_REPO"
@@ -223,11 +270,19 @@ VARIABLE_KEYS=(
   "${ENVIRONMENT_PREFIX}_GKE_LOCATION"
 )
 
-echo "Enter secret values (leave blank to skip)"
+if (( AUTO_ACCEPT_DEFAULTS )); then
+  echo "Applying detected secrets (AUTO_ACCEPT_DEFAULTS=1)"
+else
+  echo "Enter secret values (leave blank to skip)"
+fi
 for key in "${SECRET_KEYS[@]}"; do
   default_value="${!key:-}"
   default_used=0
-  if [[ -n "$default_value" ]]; then
+  value=""
+  if [[ -n "$default_value" && ( AUTO_ACCEPT_DEFAULTS -eq 1 || INTERACTIVE_SHELL -eq 0 ) ]]; then
+    value="$default_value"
+    default_used=1
+  elif [[ -n "$default_value" && INTERACTIVE_SHELL -eq 1 ]]; then
     printf "%s detected from infrastructure.\n" "$key"
     read -r -s -p "$key (press Enter to keep detected value): " value || value=""
     echo
@@ -235,9 +290,11 @@ for key in "${SECRET_KEYS[@]}"; do
       value="$default_value"
       default_used=1
     fi
-  else
+  elif (( INTERACTIVE_SHELL )); then
     read -r -s -p "$key: " value || value=""
     echo
+  else
+    echo "  - secret $key skipped (no value detected)"
   fi
   if [[ -n "$value" ]]; then
     printf "%s" "$value" | gh secret set "$key" --repo "$REPO_SLUG" --env "$ENVIRONMENT_NAME" --body - >/dev/null
@@ -246,25 +303,35 @@ for key in "${SECRET_KEYS[@]}"; do
     else
       echo "  ✓ secret $key updated"
     fi
-  else
+  elif (( INTERACTIVE_SHELL )); then
     echo "  - secret $key skipped"
   fi
 done
 
 echo
-echo "Enter plain-text environment variables (leave blank to skip)"
+if (( AUTO_ACCEPT_DEFAULTS )); then
+  echo "Applying detected environment variables (AUTO_ACCEPT_DEFAULTS=1)"
+else
+  echo "Enter plain-text environment variables (leave blank to skip)"
+fi
 for key in "${VARIABLE_KEYS[@]}"; do
   default_value="${!key:-}"
   default_used=0
-  if [[ -n "$default_value" ]]; then
+  value=""
+  if [[ -n "$default_value" && ( AUTO_ACCEPT_DEFAULTS -eq 1 || INTERACTIVE_SHELL -eq 0 ) ]]; then
+    value="$default_value"
+    default_used=1
+  elif [[ -n "$default_value" && INTERACTIVE_SHELL -eq 1 ]]; then
     printf "%s detected: %s\n" "$key" "$default_value"
     read -r -p "$key (press Enter to keep detected value): " value || value=""
     if [[ -z "$value" ]]; then
       value="$default_value"
       default_used=1
     fi
-  else
+  elif (( INTERACTIVE_SHELL )); then
     read -r -p "$key: " value || value=""
+  else
+    echo "  - variable $key skipped (no value detected)"
   fi
   if [[ -n "$value" ]]; then
     gh variable set "$key" --repo "$REPO_SLUG" --env "$ENVIRONMENT_NAME" --body "$value" >/dev/null
@@ -273,7 +340,7 @@ for key in "${VARIABLE_KEYS[@]}"; do
     else
       echo "  ✓ variable $key updated"
     fi
-  else
+  elif (( INTERACTIVE_SHELL )); then
     echo "  - variable $key skipped"
   fi
 done
