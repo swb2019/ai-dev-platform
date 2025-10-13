@@ -26,7 +26,7 @@ AI Dev Platform is a monorepo that packages a Next.js marketing application, sha
    ```bash
    ./scripts/setup-all.sh
    ```
-   This orchestrates onboarding, infrastructure bootstrap, and repository hardening. Each underlying script remains interactive and idempotent, so you can re-run the wrapper whenever credentials or infrastructure need a refresh.
+   This orchestrates onboarding, fetches extension updates, and optionally bootstraps infrastructure. Re-run it any time you need to refresh tooling or credentials.
 2. **Run the web application locally**
    ```bash
    pnpm --filter @ai-dev-platform/web dev
@@ -43,7 +43,7 @@ AI Dev Platform is a monorepo that packages a Next.js marketing application, sha
    ./scripts/update-editor-extensions.sh
    ./scripts/verify-editor-extensions.sh --strict
    ```
-   Commit the resulting `config/editor-extensions.lock.json` so PRs record the precise extension versions.
+   Stage and commit the updated `config/editor-extensions.lock.json` whenever versions change so every PR documents the exact Codex/Claude builds in use.
 
 > Prefer running the steps individually? Execute `scripts/onboard.sh`, `scripts/bootstrap-infra.sh`, and `scripts/github-hardening.sh` in that order.
 
@@ -51,7 +51,7 @@ AI Dev Platform is a monorepo that packages a Next.js marketing application, sha
 
 - After your branch is ready, run `./scripts/push-pr.sh`. It runs lint/type-check/test/e2e locally, pushes the branch, opens a PR against main, and enables auto-merge so GitHub waits for all protected-branch checks before merging.
 - Use `./scripts/git-sync-check.sh` to confirm your branch matches `origin` before handing work off to a teammate or agent.
-- Avoid direct pushes to `main`; run `./scripts/push-pr.sh` (opens a PR, enables auto-merge) and then `./scripts/monitor-pr.sh` to watch the PR until GitHub merges it.
+- Avoid direct pushes to `main`; when extensions change run the update/verify pair above, commit the lock file, then run `./scripts/push-pr.sh` (opens a PR, enables auto-merge) followed by `./scripts/monitor-pr.sh` so GitHub merges it once checks pass.
 
 ## CI/CD Overview
 
