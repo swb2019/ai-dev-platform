@@ -73,6 +73,8 @@ cd "$ROOT_DIR"
 require_clean_worktree
 current_branch=$(ensure_branch)
 run_checks
+heading "Verifying editor extensions"
+./scripts/verify-editor-extensions.sh --strict
 push_branch "$current_branch"
 create_pr "$current_branch"
 enable_auto_merge

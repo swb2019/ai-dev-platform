@@ -22,6 +22,8 @@
    ./scripts/configure-github-env.sh prod
 5. Update Cursor and editor extensions to the latest marketplace versions:
    ./scripts/update-editor-extensions.sh
+   ./scripts/verify-editor-extensions.sh --strict
+   Commit `config/editor-extensions.lock.json` with the captured versions.
 
 ## Development Workflow
 

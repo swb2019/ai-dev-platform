@@ -52,6 +52,6 @@ When using OpenAI Codex extension (if installed):
 - Immediately run `./scripts/monitor-pr.sh` to watch the PR until it merges. Investigate and remediate any failing checks; do not drop monitoring until the merge completes.
 
 ## Editor Maintenance
-- When Cursor prompts for updates, run `./scripts/update-editor-extensions.sh` to install the latest marketplace versions of Codex and Claude Code.
-- Re-run project validations (`./scripts/push-pr.sh`) after updating extensions to ensure nothing regresses.
+- When Cursor prompts for updates, run `./scripts/update-editor-extensions.sh` to install the latest marketplace versions of Codex and Claude Code and refresh `config/editor-extensions.lock.json`.
+- Execute `./scripts/verify-editor-extensions.sh --strict` so the lock file matches installed versions, then re-run project validations (`./scripts/push-pr.sh`).
 

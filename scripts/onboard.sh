@@ -373,6 +373,7 @@ install_vsix_extension() {
   local -a cli_candidates=()
   collect_editor_cli cli_candidates
 
+  local server_root="${VSCODE_AGENT_FOLDER:-$HOME/.vscode-server}"
   local installed=0
   for cli in "${cli_candidates[@]}"; do
     if "$cli" --install-extension "$vsix_path" --force >/dev/null 2>&1; then

@@ -41,7 +41,9 @@ AI Dev Platform is a monorepo that packages a Next.js marketing application, sha
 4. **Keep Cursor & extensions current**
    ```bash
    ./scripts/update-editor-extensions.sh
+   ./scripts/verify-editor-extensions.sh --strict
    ```
+   Commit the resulting `config/editor-extensions.lock.json` so PRs record the precise extension versions.
 
 > Prefer running the steps individually? Execute `scripts/onboard.sh`, `scripts/bootstrap-infra.sh`, and `scripts/github-hardening.sh` in that order.
 
