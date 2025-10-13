@@ -180,9 +180,9 @@ for i in "${!EXT_IDS[@]}"; do
   record_extension "$extension" "$version" "$source"
 done
 
-EXT_KEYS=$(IFS=,; printf "%s" "${EXT_RECORD_IDS[*]}")
-EXT_VALUES=$(IFS=,; printf "%s" "${EXT_RECORD_VERSIONS[*]}")
-EXT_SOURCES=$(IFS=,; printf "%s" "${EXT_RECORD_SOURCES[*]}")
+EXT_KEYS=$(printf "%s " "${EXT_RECORD_IDS[@]}")
+EXT_VALUES=$(printf "%s " "${EXT_RECORD_VERSIONS[@]}")
+EXT_SOURCES=$(printf "%s " "${EXT_RECORD_SOURCES[@]}")
 export EXT_KEYS EXT_VALUES EXT_SOURCES
 
 python3 - "$LOCK_FILE" <<'PY'
