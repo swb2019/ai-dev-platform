@@ -31,3 +31,13 @@ Agents must never skip a phase. If a phase cannot be completed (e.g., missing cr
 - When introducing new features or fixing regressions, add or update tests that prove the change. Absence of tests must be justified and approved.
 - Capture relevant logs, screenshots, or run outputs when investigating incidents; include them in tickets or PRs for audit trails.
 - Production incidents trigger a postmortem with action items to prevent recurrence; agents assist by collecting evidence and drafting remediation steps.
+
+## Agent Tooling & Notes
+
+- Cursor-based sessions load `.cursor/agents.md`. Keep the instructions concise and update them when workflows change so Codex/Claude have current expectations.
+- Agents and humans share the `./scripts/git-sync-check.sh` helper. Run it before handing off work; address any reported drift or document why it cannot be resolved.
+- Claude Code does not read workspace files directly. Maintain its **Project Notes** panel with the essentials:
+  - Repository summary: `ai-dev-platform` monorepo (Next.js web app + infra + scripts).
+  - Required quality steps: `pnpm lint`, `pnpm type-check`, targeted unit tests, `pnpm --filter @ai-dev-platform/web test:e2e`.
+  - Reminder to execute `./scripts/git-sync-check.sh` and report sync status.
+    Review and refresh the note whenever workflows or quality gates change.
