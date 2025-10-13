@@ -38,6 +38,10 @@ AI Dev Platform is a monorepo that packages a Next.js marketing application, sha
    pnpm --filter @ai-dev-platform/web test
    pnpm --filter @ai-dev-platform/web test:e2e
    ```
+4. **Keep Cursor & extensions current**
+   ```bash
+   ./scripts/update-editor-extensions.sh
+   ```
 
 > Prefer running the steps individually? Execute `scripts/onboard.sh`, `scripts/bootstrap-infra.sh`, and `scripts/github-hardening.sh` in that order.
 

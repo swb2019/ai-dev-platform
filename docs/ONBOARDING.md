@@ -20,6 +20,8 @@
 4. Populate GitHub environment secrets (requires `gh auth login`; defaults are detected from Terraform outputs):
    ./scripts/configure-github-env.sh staging
    ./scripts/configure-github-env.sh prod
+5. Update Cursor and editor extensions to the latest marketplace versions:
+   ./scripts/update-editor-extensions.sh
 
 ## Development Workflow
 

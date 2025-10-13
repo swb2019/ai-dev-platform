@@ -36,6 +36,7 @@ Agents must never skip a phase. If a phase cannot be completed (e.g., missing cr
 ## Agent Tooling & Notes
 
 - Cursor-based sessions load `.cursor/agents.md`. Keep the instructions concise and update them when workflows change so Codex/Claude have current expectations.
+- Run `./scripts/update-editor-extensions.sh` whenever editor updates are available so Cursor, Codex, and Claude Code stay aligned with marketplace releases. Validate the workspace (`./scripts/push-pr.sh`) after updating.
 - Agents and humans share the `./scripts/git-sync-check.sh` helper. Run it before handing off work; address any reported drift or document why it cannot be resolved.
 - Claude Code does not read workspace files directly. Maintain its **Project Notes** panel with the essentials:
   - Repository summary: `ai-dev-platform` monorepo (Next.js web app + infra + scripts).
