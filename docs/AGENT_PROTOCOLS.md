@@ -23,7 +23,7 @@ Agents must never skip a phase. If a phase cannot be completed (e.g., missing cr
 - Use Conventional Commits (`type(scope?): subject`). Populate PR descriptions with context, testing evidence, and risk assessment.
 - Open pull requests early for visibility. Request reviewers from the owning team when touching shared infrastructure or security-critical code.
 - Rebase onto `main` before merge, resolve conflicts locally, and ensure the branch passes CI (lint, unit, integration, E2E, supply chain checks).
-- Commit work on feature branches and finish by running `./scripts/push-pr.sh` to push, open the PR, and enable auto-merge.
+- Commit work on feature branches and finish by running `./scripts/push-pr.sh` to push, open the PR, and enable auto-merge. Immediately follow with `./scripts/monitor-pr.sh` to watch the PR until it merges successfully.
 - Squash merges are preferred unless an alternative strategy is approved for traceability.
 
 ## Validation Expectations
