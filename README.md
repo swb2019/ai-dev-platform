@@ -192,3 +192,13 @@ Detailed references are available in the `docs/` directory:
 - [Release Runbook](docs/RELEASE_RUNBOOK.md)
 
 Refer to these guides for environment-specific configuration, operational runbooks, and security guardrails.
+
+## Resetting / Uninstalling
+
+To wipe generated state (caches, node_modules, extension locks) run:
+
+```bash
+./scripts/uninstall.sh --force --include-home
+```
+
+Add `--destroy-cloud` to tear down Terraform-managed infrastructure (ensure you have credentials and intend to remove cloud resources).
