@@ -13,9 +13,8 @@ jobs:
 
       - name: Ensure task context updated
         run: |
-          if [[ "$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^config/task-context.json$|^docs/AGENT_HANDBOOK.md$')" == "" ]]; then
-            echo "::warning::Reminder: consider updating config/task-context.json and docs/AGENT_HANDBOOK.md to reflect progress." \
-            "Include the latest status in your PR description."
-          else
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -Eq '^config/task-context.json$|^docs/AGENT_HANDBOOK.md$'; then
             echo "Task context files modified in this PR."
+          else
+            echo "::warning::Reminder: ensure config/task-context.json and docs/AGENT_HANDBOOK.md reflect the latest plan. Include context output in the PR body."
           fi
