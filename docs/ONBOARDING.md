@@ -27,6 +27,9 @@
    ./scripts/update-editor-extensions.sh
    ./scripts/verify-editor-extensions.sh --strict
    Commit `config/editor-extensions.lock.json` with the captured versions.
+7. Review the shared task manifest and update it with your assignments:
+   ./scripts/task-context.sh --show
+   ./scripts/task-context.sh --set currentGoal "Investigate login UX"
 
 ## Development Workflow
 

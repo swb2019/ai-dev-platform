@@ -59,4 +59,8 @@ When using OpenAI Codex extension (if installed):
 ## Editor Maintenance
 - When Cursor prompts for updates, run `./scripts/update-editor-extensions.sh` to install the latest marketplace versions of Codex and Claude Code and refresh `config/editor-extensions.lock.json`.
 - Execute `./scripts/verify-editor-extensions.sh --strict` so the lock file matches installed versions, then re-run project validations (`./scripts/push-pr.sh`).
+## Task Context
+- Every session starts with `./scripts/task-context.sh --show` to understand the active goal, acceptance criteria, and TODOs.
+- Update the context (`--set` / `--clear`) as you make progress so the repository state always reflects reality.
+- Significant changes must be committed alongside code so reviewers can trace decision-making.
 
