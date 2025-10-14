@@ -6,6 +6,7 @@
 - Keep the workspace reproducible: `pnpm install --frozen-lockfile`, then run `pnpm lint`, `pnpm type-check`, and targeted tests affected by the change.
 - Use `./scripts/update-editor-extensions.sh` when updates appear; commit the updated `config/editor-extensions.lock.json`, then run `./scripts/verify-editor-extensions.sh --strict` before pushing.
 - Document commands that modify state or produce artifacts so humans can reproduce the results.
+- Follow TDD: write or update failing tests before implementing features, and run `./scripts/test-suite.sh` frequently to keep the loop green.
 
 # Codex
 
@@ -16,3 +17,4 @@
 
 - When context feels insufficient, request human clarification before continuing.
 - Keep responses concise and oriented around diff-ready changesets.
+- When implementing behavior, describe the failing test first, then the fix, and mention the passing result from `./scripts/test-suite.sh`.

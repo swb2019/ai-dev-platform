@@ -42,6 +42,11 @@ When using OpenAI Codex extension (if installed):
 - Auto-yes aliases are active
 - SSH auto-accepts host keys
 
+## TDD Mandate
+- Start by writing a failing unit or e2e test before implementing a feature or fix.
+- Keep `pnpm --filter @ai-dev-platform/web test --watch` running when iterating, and run `./scripts/test-suite.sh` after each logical change.
+- Never bypass failing tests; resolve them or escalate with full context.
+
 ## Git Synchronization Mandate
 - Run `./scripts/git-sync-check.sh` at session start, after significant changes, and before the final message.
 - If the script reports drift, fix it (push safely when ready or pull/rebase when remote has changes) or escalate when blocked.
@@ -49,7 +54,7 @@ When using OpenAI Codex extension (if installed):
 ## Pull Request Workflow
 - Never push directly to `main`. Use feature branches for all work.
 - After completing changes, run `./scripts/push-pr.sh` to push the branch, open a PR against `main`, and enable auto-merge.
-- Immediately run `./scripts/monitor-pr.sh` to watch the PR until it merges. Investigate and remediate any failing checks; do not drop monitoring until the merge completes.
+- Immediately run `./scripts/monitor-pr.sh` to watch the PR until it merges. Investigate and remediate any failing checks; do not drop monitoring until the merge completes. Attach test-suite output to the PR summary comment (handled automatically).
 
 ## Editor Maintenance
 - When Cursor prompts for updates, run `./scripts/update-editor-extensions.sh` to install the latest marketplace versions of Codex and Claude Code and refresh `config/editor-extensions.lock.json`.

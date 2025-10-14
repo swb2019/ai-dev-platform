@@ -40,6 +40,8 @@
   pnpm --filter @ai-dev-platform/web test
 - Run Playwright end-to-end tests (requires a running target; set `E2E_TARGET_URL` or start `pnpm --filter @ai-dev-platform/web dev` in another terminal):
   pnpm --filter @ai-dev-platform/web test:e2e
+- Run the full suite before commits:
+  ./scripts/test-suite.sh
 - Format code with Prettier:
   pnpm --filter @ai-dev-platform/web format
 
