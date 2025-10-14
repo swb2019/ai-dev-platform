@@ -7,4 +7,10 @@
 
 ### Notes for Reviewers
 
+- Task context updated? Paste \`./scripts/task-context.sh --show\` here.
+
+```
+
+```
+
 <!-- Include Jest/Playwright output snippets, extension versions, or context if the TDD guard was overridden. -->
