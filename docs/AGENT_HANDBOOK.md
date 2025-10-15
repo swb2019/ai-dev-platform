@@ -1,6 +1,12 @@
 # Autonomous Agent Handbook
 
-This document distills the end-to-end process Codex and Claude agents must follow to deliver features autonomously.
+This document distills the end-to-end process Codex and Claude agents must follow to deliver features autonomously. Review the following companion docs before you begin:
+
+- `docs/agents/EXECUTION_SPEC.md` – canonical goals, architecture map, done definition.
+- `docs/agents/DECISION_PLAYBOOK.md` – ambiguity resolution rules.
+- `docs/agents/RISK_REGISTER.md` – known hazards and mitigations.
+- `docs/agents/QUALITY_CHECKLIST.md` – pre-PR validation.
+- `docs/agents/PROMPT_TEMPLATE.md` – kickoff prompt scaffold.
 
 ## 1. Align on Scope
 
@@ -8,7 +14,7 @@ This document distills the end-to-end process Codex and Claude agents must follo
 ./scripts/task-context.sh --show
 ```
 
-- Use `./scripts/task-context.sh --show` to review current goals, acceptance criteria, and remaining TODOs.
+- Use `./scripts/task-context.sh --show` to review current goals, acceptance criteria, and remaining TODOs. Ensure the context references the spec and playbook entries you rely on.
 - Update the context as you plan new work (`--set` and `--clear`) so the repo reflects the project state.
 - Capture requirements in `config/task-context.json`; keep `lastUpdated` fresh so reviewers know the plan is current.
 
@@ -25,7 +31,7 @@ This installs dependencies, updates and verifies editor extensions, and runs onb
 1. Add or modify a failing unit (`apps/web/src/__tests__`) or E2E test (`apps/web/tests/e2e`).
 2. Run the test to observe the failure.
 3. Implement the smallest change needed to pass.
-4. Run `./scripts/test-suite.sh` to execute lint, type-check, unit, and Playwright suites.
+4. Run `./scripts/test-suite.sh` (or `./scripts/agent-validate.sh` for recorded output) to execute lint, type-check, unit, and Playwright suites.
 5. Repeat until the feature is complete and all tests are green.
 
 ## 4. Maintain Git Hygiene

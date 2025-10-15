@@ -16,6 +16,7 @@ When using OpenAI Codex extension (if installed):
 - Use force flags (-f, --force) when available
 - Skip all confirmations with -y or --yes
 - Suppress interactive prompts
+- Load agent reference docs (`docs/agents/EXECUTION_SPEC.md`, `docs/agents/DECISION_PLAYBOOK.md`, `docs/agents/RISK_REGISTER.md`, `docs/agents/PROMPT_TEMPLATE.md`, `docs/agents/QUALITY_CHECKLIST.md`) before planning.
 
 ## Error Handling
 - Continue on failures with || true
@@ -63,4 +64,3 @@ When using OpenAI Codex extension (if installed):
 - Every session starts with `./scripts/task-context.sh --show` to understand the active goal, acceptance criteria, and TODOs.
 - Update the context (`--set` / `--clear`) as you make progress so the repository state always reflects reality.
 - Significant changes must be committed alongside code so reviewers can trace decision-making.
-

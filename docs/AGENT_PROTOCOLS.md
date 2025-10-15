@@ -43,3 +43,4 @@ Agents must never skip a phase. If a phase cannot be completed (e.g., missing cr
   - Required quality steps: `pnpm lint`, `pnpm type-check`, targeted unit tests, `pnpm --filter @ai-dev-platform/web test:e2e`.
   - Reminder to execute `./scripts/git-sync-check.sh` and report sync status.
     Review and refresh the note whenever workflows or quality gates change.
+- Keep `docs/agents/` up to date. It houses the execution spec, decision playbook, risk register, prompt template, and quality checklist that autonomous agents rely on for long-running sessions. Update these files whenever workflows, assumptions, or mitigations change.

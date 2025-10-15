@@ -3,7 +3,7 @@
 # optional developer-home caches, and (optionally) runs terraform destroy for
 # each environment before wiping local Terraform state.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FORCE=0
@@ -11,16 +11,113 @@ DRY_RUN=0
 INCLUDE_HOME=0
 DESTROY_TERRAFORM=0
 SUMMARY_FILE="$ROOT_DIR/uninstall-terraform-summary.json"
+SKIP_REPO=0
+SKIP_TERRAFORM_LOCAL=0
+SKIP_HOME=0
+SKIP_DESTROY=0
+BACKUP_DIR=""
+PARALLEL_JOBS=4
+TELEMETRY=0
+START_TIME=$SECONDS
+declare -a DRY_RUN_REPORT=()
+
+shopt -s nullglob
+
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1 && [[ "$(python -c 'import sys;print(sys.version_info[0])')" == "3" ]]; then
+    PYTHON_BIN="python"
+  else
+    PYTHON_BIN=""
+  fi
+fi
+
+on_error() {
+  local exit_code="$1"
+  local line="$2"
+  echo "Error: uninstall aborted at line $line (exit code $exit_code)." >&2
+  exit "$exit_code"
+}
+
+trap 'on_error $? $LINENO' ERR
+
+timestamp() {
+  date +"%Y-%m-%dT%H:%M:%S%z"
+}
+
+json_escape() {
+  if [[ -n "$PYTHON_BIN" ]]; then
+    "$PYTHON_BIN" - <<'PY' "$1"
+import json, sys
+print(json.dumps(sys.argv[1])[1:-1])
+PY
+    return
+  fi
+  local value="$1"
+  local output=""
+  local length=${#value}
+  local i char ascii hex
+  for (( i=0; i<length; i++ )); do
+    char=${value:i:1}
+    case "$char" in
+      '\\') output+='\\\\' ;;
+      '"') output+='\\"' ;;
+      $'\b') output+='\\b' ;;
+      $'\f') output+='\\f' ;;
+      $'\n') output+='\\n' ;;
+      $'\r') output+='\\r' ;;
+      $'\t') output+='\\t' ;;
+      *)
+        LC_CTYPE=C printf -v ascii '%d' "'${char}"
+        if (( ascii < 0x20 || ascii == 0x7f )); then
+          printf -v hex '\\u%04X' "$ascii"
+          output+="$hex"
+        else
+          output+="$char"
+        fi ;;
+    esac
+  done
+  printf '%s' "$output"
+}
+
+log_phase() {
+  local message="$1"
+  local elapsed=$((SECONDS - START_TIME))
+  printf '[%s] %s (elapsed %ss)\n' "$(date '+%H:%M:%S')" "$message" "$elapsed"
+}
+
+telemetry_emit() {
+  (( TELEMETRY )) || return 0
+  local event="$1"
+  local status="$2"
+  local detail="$3"
+  local json_detail=""
+  if [[ -n "$detail" ]]; then
+    json_detail=",\"detail\":\"$(json_escape "$detail")\""
+  fi
+  printf '{"timestamp":"%s","event":"%s","status":"%s"%s}\n' "$(timestamp)" "$(json_escape "$event")" "$(json_escape "$status")" "$json_detail"
+}
 
 usage() {
   cat <<'USAGE'
 Usage: ./scripts/uninstall.sh [options]
 
 Options:
+  --skip-repo         Do not delete repository artifacts.
+  --skip-terraform-local
+                      Do not delete local Terraform state/cache.
+  --skip-home         Do not delete items under $HOME even if --include-home set.
+  --skip-destroy-cloud
+                      Disable terraform destroy even if --destroy-cloud passed.
   --force             Skip interactive confirmation.
   --dry-run           Show what would be removed without deleting anything.
   --include-home      Also remove Codex/Cursor caches under $HOME.
   --destroy-cloud     Run `terraform destroy` in infra/terraform/envs/* before cleaning files.
+  --backup-dir <path> Create tar.gz backups of targets before deletion.
+  --parallel <n>      Number of parallel cleanup workers (default: 4).
+  --telemetry         Emit JSON telemetry lines for key events.
   -h, --help          Show this message.
 
 Examples:
@@ -31,6 +128,15 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --skip-repo) SKIP_REPO=1; shift ;;
+    --skip-terraform-local) SKIP_TERRAFORM_LOCAL=1; shift ;;
+    --skip-home) SKIP_HOME=1; INCLUDE_HOME=0; shift ;;
+    --skip-destroy-cloud) SKIP_DESTROY=1; DESTROY_TERRAFORM=0; shift ;;
+    --backup-dir)
+      BACKUP_DIR="$2"; shift 2 ;;
+    --parallel)
+      PARALLEL_JOBS="$2"; shift 2 ;;
+    --telemetry) TELEMETRY=1; shift ;;
     --force) FORCE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --include-home) INCLUDE_HOME=1; shift ;;
@@ -47,32 +153,190 @@ if [[ ! -f "$ROOT_DIR/package.json" ]]; then
   exit 1
 fi
 
+if ! [[ "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || (( PARALLEL_JOBS < 1 )); then
+  echo "Invalid --parallel value; using 4." >&2
+  PARALLEL_JOBS=4
+fi
+
+WAIT_N_AVAILABLE=0
+if help wait 2>/dev/null | grep -q -- '-n'; then
+  WAIT_N_AVAILABLE=1
+fi
+if (( PARALLEL_JOBS > 1 && ! WAIT_N_AVAILABLE )); then
+  echo "Note: current Bash does not support wait -n; running cleanup sequentially." >&2
+  PARALLEL_JOBS=1
+fi
+
+BACKUP_ENABLED=0
+if [[ -n "$BACKUP_DIR" ]]; then
+  mkdir -p "$BACKUP_DIR"
+  BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
+  BACKUP_ENABLED=1
+fi
+
+REPO_ENABLED=$(( SKIP_REPO ? 0 : 1 ))
+TERRAFORM_LOCAL_ENABLED=$(( SKIP_TERRAFORM_LOCAL ? 0 : 1 ))
+DESTROY_TERRAFORM=$(( SKIP_DESTROY ? 0 : DESTROY_TERRAFORM ))
+DESTROY_ENABLED=$(( DESTROY_TERRAFORM ? 1 : 0 ))
+HOME_ENABLED=0
+if (( INCLUDE_HOME )) && (( ! SKIP_HOME )); then
+  HOME_ENABLED=1
+else
+  INCLUDE_HOME=0
+fi
+
+telemetry_emit "uninstall.start" "begin" "dry_run=$DRY_RUN"
+log_phase "Uninstall script initialised (dry-run=$DRY_RUN, force=$FORCE)"
+
+interactive_menu() {
+  (( FORCE )) && return
+  [[ -t 0 ]] || return
+  while true; do
+    echo ""
+    echo "Configure cleanup:"
+    printf "  1) Repository cleanup           : %s\n" $([[ $REPO_ENABLED -eq 1 ]] && echo "ON" || echo "OFF")
+    printf "  2) Terraform local cleanup      : %s\n" $([[ $TERRAFORM_LOCAL_ENABLED -eq 1 ]] && echo "ON" || echo "OFF")
+    printf "  3) Home cache cleanup           : %s\n" $([[ $HOME_ENABLED -eq 1 ]] && echo "ON" || echo "OFF")
+    printf "  4) Terraform destroy (cloud)    : %s\n" $([[ $DESTROY_ENABLED -eq 1 ]] && echo "ON" || echo "OFF")
+    printf "  5) Backup directory             : %s\n" $([[ $BACKUP_ENABLED -eq 1 ]] && echo "$BACKUP_DIR" || echo "Disabled")
+    printf "  6) Parallel workers             : %s\n" "$PARALLEL_JOBS"
+    echo "  7) Continue"
+    read -r -p "Choose an option to toggle/configure: " choice
+    case "$choice" in
+      1) REPO_ENABLED=$(( REPO_ENABLED ? 0 : 1 )) ;;
+      2) TERRAFORM_LOCAL_ENABLED=$(( TERRAFORM_LOCAL_ENABLED ? 0 : 1 )) ;;
+      3)
+         if (( HOME_ENABLED )); then
+           HOME_ENABLED=0; INCLUDE_HOME=0
+         else
+           HOME_ENABLED=1; INCLUDE_HOME=1
+         fi ;;
+      4) DESTROY_ENABLED=$(( DESTROY_ENABLED ? 0 : 1 )) ;;
+      5)
+         if (( BACKUP_ENABLED )); then
+           BACKUP_ENABLED=0; BACKUP_DIR=""
+         else
+           read -r -p "Enter backup directory path: " input_dir
+           if [[ -n "$input_dir" ]]; then
+             BACKUP_DIR="$(cd "$(dirname "$input_dir")" && pwd)/$(basename "$input_dir")"
+             mkdir -p "$BACKUP_DIR"
+             BACKUP_ENABLED=1
+           fi
+         fi ;;
+      6)
+         read -r -p "Parallel workers (current $PARALLEL_JOBS): " workers
+         if [[ "$workers" =~ ^[0-9]+$ ]] && (( workers > 0 )); then
+           PARALLEL_JOBS=$workers
+         else
+           echo "Invalid worker count."
+         fi ;;
+      7) break ;;
+      *) echo "Invalid choice." ;;
+    esac
+  done
+}
+
+interactive_menu
+
+timestamp_file() {
+  date +"%Y%m%d-%H%M%S"
+}
+
+perform_backup() {
+  local category="$1"; shift
+  (( BACKUP_ENABLED )) || return
+  (( DRY_RUN )) && { log_phase "Skipping backup for $category during dry-run"; telemetry_emit "backup.skip" "dry-run" "$category"; return; }
+  local -a to_backup=()
+  local path
+  for path in "$@"; do
+    [[ -e "$path" || -L "$path" ]] && to_backup+=("$path")
+  done
+  (( ${#to_backup[@]} )) || return
+  local archive="$BACKUP_DIR/${category}-$(timestamp_file).tar.gz"
+  log_phase "Creating backup archive for $category -> $archive"
+  if tar -czf "$archive" -- "${to_backup[@]}" 2>>/tmp/uninstall-backup.log; then
+    telemetry_emit "backup.${category}" "ok" "$archive"
+  else
+    telemetry_emit "backup.${category}" "error" "$archive"
+    echo "Warning: backup for $category failed (see /tmp/uninstall-backup.log)." >&2
+  fi
+}
+
 prompt() {
   local message="$1"
   if (( FORCE )); then
     return 0
   fi
-  read -r -p "$message [y/N] " response
+  if ! read -r -p "$message [y/N] " response; then
+    return 1
+  fi
   case "$response" in
     [yY][eE][sS]|[yY]) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-remove_path() {
-  local target="$1"
+remove_target() {
+  local category="$1"
+  local target="$2"
   if [[ -z "$target" ]]; then
     return
   fi
-  if [[ ! -e "$target" && ! -L "$target" ]]; then
-    return
+  local exists=0
+  if [[ -e "$target" || -L "$target" ]]; then
+    exists=1
   fi
   if (( DRY_RUN )); then
-    echo "[dry-run] rm -rf $target"
+    if (( exists )); then
+      echo "[dry-run][$category] rm -rf $target"
+      DRY_RUN_REPORT+=("$category would remove: $target")
+      telemetry_emit "dry-run.$category" "present" "$target"
+    else
+      echo "[dry-run][$category] skip missing $target"
+      DRY_RUN_REPORT+=("$category missing: $target")
+      telemetry_emit "dry-run.$category" "missing" "$target"
+    fi
   else
-    rm -rf "$target"
-    echo "Removed $target"
+    if (( exists )); then
+      rm -rf "$target"
+      echo "Removed [$category] $target"
+      telemetry_emit "delete.$category" "ok" "$target"
+    else
+      echo "Skipped [$category] $target (not found)"
+      telemetry_emit "delete.$category" "missing" "$target"
+    fi
   fi
+}
+
+process_targets() {
+  local category="$1"; shift
+  local -a targets=("$@")
+  (( ${#targets[@]} )) || return
+  log_phase "Processing $category targets (${#targets[@]})"
+  telemetry_emit "process.$category" "begin" "${#targets[@]}"
+  if (( BACKUP_ENABLED )) && (( ! DRY_RUN )); then
+    perform_backup "$category" "${targets[@]}"
+  fi
+  if (( DRY_RUN )) || (( PARALLEL_JOBS <= 1 )); then
+    local path
+    for path in "${targets[@]}"; do
+      remove_target "$category" "$path"
+    done
+  else
+    local active=0 path
+    for path in "${targets[@]}"; do
+      {
+        remove_target "$category" "$path"
+      } &
+      active=$((active+1))
+      if (( active >= PARALLEL_JOBS )); then
+        wait -n
+        active=$((active-1))
+      fi
+    done
+    wait
+  fi
+  telemetry_emit "process.$category" "end" "${#targets[@]}"
 }
 
 repo_targets=(
@@ -116,42 +380,91 @@ home_targets=(
   "$HOME/.pnpm-store"
   "$HOME/.turbo"
   "$HOME/.npm"
+  "$HOME/.config/gcloud"
+  "$HOME/.terraform.d"
 )
 
-summaries=()
-json_entries=()
+declare -a summaries=()
+declare -a json_entries=()
+
+detect_backend_type() {
+  local env_dir="$1"
+  local backend="unknown"
+
+  if [[ -n "$PYTHON_BIN" ]]; then
+    backend=$("$PYTHON_BIN" - <<'PY' "$env_dir" 2>/dev/null || true
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+pattern = re.compile(r'backend\s*"([^"]+)"')
+for tf_file in sorted(root.glob("*.tf")):
+    try:
+        text = tf_file.read_text(encoding="utf-8")
+    except OSError:
+        continue
+    match = pattern.search(text)
+    if match:
+        print(match.group(1))
+        break
+PY
+)
+  elif command -v python3 >/dev/null 2>&1; then
+    backend=$(python3 - <<'PY' "$env_dir" 2>/dev/null || true
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+pattern = re.compile(r'backend\s*"([^"]+)"')
+for tf_file in sorted(root.glob("*.tf")):
+    try:
+        text = tf_file.read_text(encoding="utf-8")
+    except OSError:
+        continue
+    match = pattern.search(text)
+    if match:
+        print(match.group(1))
+        break
+PY
+)
+  else
+    local tf_files=()
+    while IFS= read -r tf_file; do
+      tf_files+=("$tf_file")
+    done < <(find "$env_dir" -maxdepth 1 -type f -name '*.tf' 2>/dev/null)
+    if (( ${#tf_files[@]} )); then
+      backend=$(grep -hE 'backend[[:space:]]+"[^"]+"' "${tf_files[@]}" 2>/dev/null | head -n 1 | sed -nE 's/.*backend[[:space:]]+"([^"]+)".*/\1/p')
+    fi
+  fi
+
+  [[ -n "$backend" ]] || backend="unknown"
+  printf '%s\n' "$backend"
+}
 
 append_summary() {
   local env="$1" status="$2" message="$3" backend="$4"
   summaries+=("$env: $status - $message (backend: $backend)")
-  json_entries+=("  {\"environment\":\"$env\",\"status\":\"$status\",\"backend\":\"$backend\",\"message\":\"$message\"}")
+  json_entries+=("    {\"environment\":\"$(json_escape "$env")\",\"status\":\"$(json_escape "$status")\",\"backend\":\"$(json_escape "$backend")\",\"message\":\"$(json_escape "$message")\"}")
 }
 
 get_backend() {
   local env_dir="$1"
-  python3 - <<'PY'
-import pathlib, sys, re
-path = pathlib.Path(sys.argv[1])
-backend_file = path / 'backend.tf'
-backend = 'unknown'
-if backend_file.exists():
-    text = backend_file.read_text()
-    m = re.search(r'backend\s+"([^"]+)"', text)
-    if m:
-        backend = m.group(1)
-print(backend)
-PY
- "$env_dir"
+  local backend_file="$env_dir/backend.tf"
+  local backend="unknown"
+  if [[ -f "$backend_file" ]]; then
+    backend=$(detect_backend_type "$env_dir")
+    backend=${backend:-unknown}
+  fi
+  printf '%s\n' "$backend"
 }
 
 run_terraform_destroy() {
-  local env_dir="$1" backend warning=""
+  local env_dir="$1" backend
   backend=$(get_backend "$env_dir")
-  echo "— Terraform destroy in $env_dir (backend: $backend)"
+  echo "-- Terraform destroy in $env_dir (backend: $backend)"
   case "$backend" in
     s3|gcs|azurerm|remote|http)
-      warning="Remote backend detected ($backend); ensure remote state is cleaned if destroy fails."
-      echo "  $warning" >&2
+      echo "  Remote backend detected ($backend); ensure remote state is cleaned if destroy fails." >&2
+      ;;
+    unknown)
+      echo "  Backend type could not be confirmed; assuming remote backend for safety." >&2
+      backend="unknown"
       ;;
   esac
 
@@ -175,7 +488,20 @@ run_terraform_destroy() {
   fi
 
   if terraform destroy -auto-approve; then
-    append_summary "$env_dir" "success" "destroy succeeded" "$backend"
+    if terraform state list >/dev/null 2>&1; then
+      if STATE_ENTRIES=$(terraform state list); then
+        if [[ -n "$STATE_ENTRIES" ]]; then
+          echo "  Warning: residual state detected for $env_dir" >&2
+          append_summary "$env_dir" "warning" "destroy succeeded but state not empty" "$backend"
+        else
+          append_summary "$env_dir" "success" "destroy succeeded" "$backend"
+        fi
+      else
+        append_summary "$env_dir" "success" "destroy succeeded" "$backend"
+      fi
+    else
+      append_summary "$env_dir" "success" "destroy succeeded" "$backend"
+    fi
   else
     echo "terraform destroy failed in $env_dir" >&2
     append_summary "$env_dir" "failure" "destroy failed" "$backend"
@@ -188,35 +514,77 @@ if ! prompt "This will remove generated artifacts from $ROOT_DIR. Proceed?"; the
   exit 0
 fi
 
-if (( DESTROY_TERRAFORM )); then
-  echo "Beginning Terraform destruction..."
+if (( DESTROY_ENABLED )); then
+  log_phase "Beginning Terraform destruction"
+  telemetry_emit "destroy.start" "begin" ""
+  env_found=0
   for env_dir in "$ROOT_DIR"/infra/terraform/envs/*; do
     [[ -d "$env_dir" ]] || continue
+    env_found=1
     run_terraform_destroy "$env_dir"
   done
-  echo "Terraform destruction summary:"
-  printf '  - %s\n' "${summaries[@]}"
+  if (( ! env_found )); then
+    echo "No Terraform environments found under infra/terraform/envs."
+  fi
+  if ((${#summaries[@]})); then
+    echo "Terraform destruction summary:"
+    printf '  - %s\n' "${summaries[@]}"
+  fi
   if (( ! DRY_RUN )); then
-    printf '[\n%s\n]\n' "$(IFS=,$'\n'; echo "${json_entries[*]}")" > "$SUMMARY_FILE"
-    echo "Summary written to $SUMMARY_FILE"
+    if ((${#json_entries[@]})); then
+      {
+        printf '[\n'
+        total=${#json_entries[@]}
+        for ((i=0; i<total; i++)); do
+          printf '%s' "${json_entries[i]}"
+          if (( i < total - 1 )); then
+            printf ',\n'
+          else
+            printf '\n'
+          fi
+        done
+        printf ']\n'
+      } > "$SUMMARY_FILE"
+      echo "Summary written to $SUMMARY_FILE"
+    else
+      if [[ -f "$SUMMARY_FILE" ]]; then
+        rm -f "$SUMMARY_FILE"
+        echo "No Terraform actions executed; removed existing $SUMMARY_FILE."
+      else
+        echo "No Terraform actions executed; skipping summary file."
+      fi
+    fi
   fi
+  telemetry_emit "destroy.end" "complete" ""
 fi
 
-echo "Cleaning repository artifacts..."
-for path in "${repo_targets[@]}"; do
-  remove_path "$path"
-done
-for path in "${terraform_local_targets[@]}"; do
-  remove_path "$path"
-done
+if (( REPO_ENABLED )); then
+  process_targets "repo" "${repo_targets[@]}"
+else
+  log_phase "Repository cleanup skipped"
+fi
 
-if (( INCLUDE_HOME )); then
+if (( TERRAFORM_LOCAL_ENABLED )); then
+  process_targets "terraform-local" "${terraform_local_targets[@]}"
+else
+  log_phase "Terraform local cleanup skipped"
+fi
+
+if (( HOME_ENABLED )); then
   if prompt "Also remove cached state under $HOME?"; then
-    echo "Cleaning developer-home caches..."
-    for path in "${home_targets[@]}"; do
-      remove_path "$path"
-    done
+    process_targets "home" "${home_targets[@]}"
+  else
+    log_phase "Home cache cleanup skipped by user"
   fi
+else
+  (( INCLUDE_HOME )) && log_phase "Home cleanup disabled by configuration"
 fi
 
-echo "Uninstall complete. Run ./scripts/setup-all.sh to reinstall when ready."
+if (( DRY_RUN )) && ((${#DRY_RUN_REPORT[@]})); then
+  echo ""
+  echo "Dry-run summary:"
+  printf '  - %s\n' "${DRY_RUN_REPORT[@]}"
+fi
+
+log_phase "Uninstall complete. Run ./scripts/setup-all.sh to reinstall when ready."
+telemetry_emit "uninstall.complete" "success" "dry_run=$DRY_RUN"

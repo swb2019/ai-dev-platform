@@ -190,6 +190,11 @@ Detailed references are available in the `docs/` directory:
 - [Agent Protocols](docs/AGENT_PROTOCOLS.md)
 - [Onboarding Guide](docs/ONBOARDING.md)
 - [Release Runbook](docs/RELEASE_RUNBOOK.md)
+- [Agent Execution Specification](docs/agents/EXECUTION_SPEC.md)
+- [Agent Decision Playbook](docs/agents/DECISION_PLAYBOOK.md)
+- [Agent Risk Register](docs/agents/RISK_REGISTER.md)
+- [Agent Prompt Template](docs/agents/PROMPT_TEMPLATE.md)
+- [Agent Quality Checklist](docs/agents/QUALITY_CHECKLIST.md)
 
 Refer to these guides for environment-specific configuration, operational runbooks, and security guardrails.
 
