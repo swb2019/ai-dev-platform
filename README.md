@@ -76,13 +76,31 @@ Ensure the following tools are installed and authenticated:
 
 ### Setup
 
+**Windows quick start**
+
+- From an elevated PowerShell session in the repo root, run:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1 [-DockerInstallerPath C:\path\to\DockerDesktopInstaller.exe]
+  ```
+  This orchestrates WSL2 feature enablement, installs the Ubuntu distribution (prompting if first-run setup is needed), sets it as the default WSL distro, provisions Docker Desktop with WSL integration (via `winget`, direct download, or a supplied installer), clones the repository inside WSL, and executes `./scripts/setup-all.sh`. Re-run the command after following any prompts; completed stages are skipped automatically. Use `-RepoSlug your-user/ai-dev-platform` or `-Branch feature` to target a fork/branch, and pass `-DockerInstallerPath` or set `DOCKER_DESKTOP_INSTALLER` when operating in offline/proxy-restricted environments.
+
+**Cross-platform scripts**
+
 The provided scripts streamline the initial setup:
 
 1. **One-shot setup**
    ```bash
    ./scripts/setup-all.sh
    ```
-   Runs onboarding, infrastructure bootstrap, repository hardening, and editor extension management.
+   Runs prerequisite installation, onboarding, infrastructure bootstrap, repository hardening, editor extension management, _and_ automated verification (`docker info`, `pnpm lint`, `pnpm type-check`, `pnpm --filter @ai-dev-platform/web test`). The wrapper provisions common OS packages (apt, dnf, Homebrew), installs Node/pnpm tooling, and verifies Docker availability. Each check has built-in recovery—`docker info` re-invokes the Docker setup helper, while PNPM commands trigger reinstall/fix routines before retrying. On WSL it can launch the Docker Desktop installer (via `winget` or direct download); finish any Windows prompts (or reboot if requested), relaunch Docker Desktop to enable WSL integration, then re-run the script until all checks succeed. Set `SKIP_POST_CHECKS=1` to bypass verification or `POST_CHECK_MAX_RETRIES=5` (for example) to allow additional automatic recovery attempts.
+
+The script keeps a checkpoint file in `tmp/setup-all.state`, letting you stop and resume without repeating completed steps. On the next run it reports prior failures and skips finished stages automatically. To re-run everything from scratch, set `RESET_SETUP_STATE=1 ./scripts/setup-all.sh`.
+Additional knobs:
+
+- `POST_CHECK_MAX_RETRIES` – increase automated recovery attempts for post-checks (default `3`).
+- `DOCKER_DESKTOP_INSTALLER` – absolute Windows path to a pre-downloaded Docker Desktop installer (used by the WSL helper when the network is locked down).
+- Post-check logs are written to `tmp/postcheck-*.log` so you can review failures after automated recovery attempts.
+
 2. **Bootstrap infrastructure (optional standalone)**
    ```bash
    ./scripts/bootstrap-infra.sh
