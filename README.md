@@ -59,54 +59,51 @@ The codebase is organized as a PNPM workspace managed by Turbo.
 
 ## Getting Started
 
-### Prerequisites
+### Recommended: automated setup
 
-Ensure the following tools are installed and authenticated:
+- **Windows helper**
 
-1. **Node.js 20.x** – enable Corepack and activate pnpm 9:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1 [-DockerInstallerPath C:\path\to\DockerDesktopInstaller.exe]
+  ```
+
+  Launches WSL2 (if needed), sets the default distro, provisions Docker Desktop with WSL integration, clones this repository into Linux, and invokes `./scripts/setup-all.sh`. Re-run the command after completing any prompts; finished stages are skipped automatically. Use `-RepoSlug your-user/ai-dev-platform` or `-Branch feature` to target a fork/branch. Provide `-DockerInstallerPath` or set `DOCKER_DESKTOP_INSTALLER` when operating in offline or proxy-restricted environments.
+
+- **macOS/Linux/WSL**
+
+  ```bash
+  ./scripts/setup-all.sh
+  ```
+
+  The wrapper installs OS-level packages (apt, dnf, Homebrew), ensures Node.js/pnpm/gh/gcloud/terraform, validates Docker availability, runs onboarding, infrastructure bootstrap, repository hardening, and verifies the workspace (`docker info`, `pnpm lint`, `pnpm type-check`, `pnpm --filter @ai-dev-platform/web test`). Every verification step has built-in recovery—Docker checks reinvoke the runtime helper, while pnpm failures trigger reinstall/fix routines. On WSL the script can launch Docker Desktop via `winget` or a supplied installer; complete Windows prompts or reboot if requested, enable WSL integration, then re-run until the checks succeed.
+
+  Progress is checkpointed in `tmp/setup-all.state`, so subsequent runs resume where they left off. Set `RESET_SETUP_STATE=1 ./scripts/setup-all.sh` to force a full rerun. Additional knobs include `SKIP_POST_CHECKS=1` to skip verification, `POST_CHECK_MAX_RETRIES=5` (for example) to allow extra recovery attempts, `DOCKER_DESKTOP_INSTALLER` for offline Docker Desktop installs, and log capture under `tmp/postcheck-*.log`.
+
+### Manual prerequisites (fallback)
+
+The automated script handles prerequisites whenever it has the required permissions, package manager, and network access. If it reports that a dependency must be installed manually (common on managed corporate laptops or air-gapped environments), provision the following and re-run `./scripts/setup-all.sh` afterward:
+
+1. **Node.js 20.x and pnpm 9** – enable Corepack and activate pnpm 9.12.0:
    ```bash
    corepack enable && corepack prepare pnpm@9.12.0 --activate
    ```
-2. **Docker** – required for local container builds and scanning.
-3. **CLIs** – Google Cloud CLI (`gcloud`), Terraform CLI, and GitHub CLI (`gh`) with access to the target project.
-4. **Playwright dependencies** – install browser dependencies once locally:
+2. **Docker** – install Docker Desktop/Engine and ensure the daemon responds to `docker info`.
+3. **Google Cloud CLI (`gcloud`), Terraform CLI, GitHub CLI (`gh`)** – authenticate against the target GCP project and GitHub organization.
+4. **Playwright system dependencies** – install once locally for browser automation:
    ```bash
    pnpm --filter @ai-dev-platform/web exec playwright install --with-deps
    ```
 
-### Setup
+After the prerequisites are satisfied, re-run `./scripts/setup-all.sh` to perform onboarding, infrastructure bootstrap, hardening, and verification.
 
-**Windows quick start**
+### Additional scripts
 
-- From an elevated PowerShell session in the repo root, run:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1 [-DockerInstallerPath C:\path\to\DockerDesktopInstaller.exe]
-  ```
-  This orchestrates WSL2 feature enablement, installs the Ubuntu distribution (prompting if first-run setup is needed), sets it as the default WSL distro, provisions Docker Desktop with WSL integration (via `winget`, direct download, or a supplied installer), clones the repository inside WSL, and executes `./scripts/setup-all.sh`. Re-run the command after following any prompts; completed stages are skipped automatically. Use `-RepoSlug your-user/ai-dev-platform` or `-Branch feature` to target a fork/branch, and pass `-DockerInstallerPath` or set `DOCKER_DESKTOP_INSTALLER` when operating in offline/proxy-restricted environments.
-
-**Cross-platform scripts**
-
-The provided scripts streamline the initial setup:
-
-1. **One-shot setup**
-   ```bash
-   ./scripts/setup-all.sh
-   ```
-   Runs prerequisite installation, onboarding, infrastructure bootstrap, repository hardening, editor extension management, _and_ automated verification (`docker info`, `pnpm lint`, `pnpm type-check`, `pnpm --filter @ai-dev-platform/web test`). The wrapper provisions common OS packages (apt, dnf, Homebrew), installs Node/pnpm tooling, and verifies Docker availability. Each check has built-in recovery—`docker info` re-invokes the Docker setup helper, while PNPM commands trigger reinstall/fix routines before retrying. On WSL it can launch the Docker Desktop installer (via `winget` or direct download); finish any Windows prompts (or reboot if requested), relaunch Docker Desktop to enable WSL integration, then re-run the script until all checks succeed. Set `SKIP_POST_CHECKS=1` to bypass verification or `POST_CHECK_MAX_RETRIES=5` (for example) to allow additional automatic recovery attempts.
-
-The script keeps a checkpoint file in `tmp/setup-all.state`, letting you stop and resume without repeating completed steps. On the next run it reports prior failures and skips finished stages automatically. To re-run everything from scratch, set `RESET_SETUP_STATE=1 ./scripts/setup-all.sh`.
-Additional knobs:
-
-- `POST_CHECK_MAX_RETRIES` – increase automated recovery attempts for post-checks (default `3`).
-- `DOCKER_DESKTOP_INSTALLER` – absolute Windows path to a pre-downloaded Docker Desktop installer (used by the WSL helper when the network is locked down).
-- Post-check logs are written to `tmp/postcheck-*.log` so you can review failures after automated recovery attempts.
-
-2. **Bootstrap infrastructure (optional standalone)**
+1. **Bootstrap infrastructure (optional standalone)**
    ```bash
    ./scripts/bootstrap-infra.sh
    ```
    Initializes Terraform backends, enables required GCP services, configures Workload Identity Federation, and offers applies per environment.
-3. **Configure GitHub environments**
+2. **Configure GitHub environments**
    ```bash
    ./scripts/configure-github-env.sh staging
    ./scripts/configure-github-env.sh prod
