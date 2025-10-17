@@ -382,7 +382,15 @@ function Get-WslEnvPrefix {
 function Run-SetupAll {
     Write-Section "Running ./scripts/setup-all.sh"
     $envPrefix = Get-WslEnvPrefix
-    $command = if ($envPrefix) { "$envPrefix; cd \$HOME/ai-dev-platform; ./scripts/setup-all.sh" } else { "cd \$HOME/ai-dev-platform; ./scripts/setup-all.sh" }
+    $commands = @()
+    if ($envPrefix) {
+        $commands += $envPrefix
+    }
+    $commands += 'export SETUP_STATE_DIR="$HOME/.cache/ai-dev-platform/setup-state"'
+    $commands += 'mkdir -p "${SETUP_STATE_DIR%/*}"'
+    $commands += 'cd $HOME/ai-dev-platform'
+    $commands += './scripts/setup-all.sh'
+    $command = ($commands -join '; ')
     $result = Invoke-Wsl -Command $command
     if ($result.ExitCode -eq 0) {
         return
@@ -398,8 +406,10 @@ function Prompt-OptionalToken {
         [string]$EnvName,
         [string]$PromptMessage
     )
-    $current = [Environment]::GetEnvironmentVariable($EnvName, "Process")
-    if (-not [string]::IsNullOrEmpty($current)) {
+    $current = [Environment]::GetEnvironmentVariable($EnvName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
+    $current = [Environment]::GetEnvironmentVariable($EnvName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
         return $false
     }
     $secure = Read-Host "$PromptMessage (press Enter to skip)" -AsSecureString
@@ -413,7 +423,8 @@ function Prompt-OptionalToken {
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
     }
     if ($value) {
-        [Environment]::SetEnvironmentVariable($EnvName, $value, "Process")
+        [Environment]::SetEnvironmentVariable($EnvName, $value, 'Process')
+        [Environment]::SetEnvironmentVariable($EnvName, $value, 'Process')
         return $true
     }
     return $false
