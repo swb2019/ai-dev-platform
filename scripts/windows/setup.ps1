@@ -466,8 +466,11 @@ function Run-SetupAll {
         $commands += $envPrefix
     }
     $commands += 'if [ -z "${SETUP_STATE_DIR:-}" ]; then SETUP_STATE_DIR="$HOME/.cache/ai-dev-platform/setup-state"; fi'
-    $commands += 'STATE_PARENT="${SETUP_STATE_DIR%/*}"'
-    $commands += 'if [ -z "$STATE_PARENT" ] || [ "$STATE_PARENT" = "$SETUP_STATE_DIR" ]; then STATE_PARENT="$HOME/.cache/ai-dev-platform"; fi'
+    $commands += 'STATE_BASENAME="$(basename "$SETUP_STATE_DIR")"'
+    $commands += 'if [ -z "$STATE_BASENAME" ]; then SETUP_STATE_DIR="$HOME/.cache/ai-dev-platform/setup-state"; STATE_BASENAME="setup-state"; fi'
+    $commands += 'STATE_PARENT="$(dirname "$SETUP_STATE_DIR")"'
+    $commands += 'if [ -z "$STATE_PARENT" ] || [ "$STATE_PARENT" = "." ]; then STATE_PARENT="$HOME/.cache/ai-dev-platform"; fi'
+    $commands += 'SETUP_STATE_DIR="$STATE_PARENT/$STATE_BASENAME"'
     $commands += 'mkdir -p "$STATE_PARENT" "$SETUP_STATE_DIR"'
     $commands += 'export SETUP_STATE_DIR'
     $commands += 'cd $HOME/ai-dev-platform'
