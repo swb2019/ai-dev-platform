@@ -60,6 +60,50 @@ function Ensure-Winget {
     throw $msg
 }
 
+function Ensure-Cursor {
+    Write-Section "Ensuring Cursor editor is installed"
+    try {
+        Ensure-Winget
+    } catch {
+        Write-Warning "Unable to verify winget availability ($_). Install Cursor manually from https://cursor.sh/download and rerun this script."
+        return
+    }
+
+    $cursorId = "Cursor.Cursor"
+    $installed = $false
+    try {
+        $listOutput = winget list --id $cursorId --exact --accept-source-agreements 2>$null
+        if ($LASTEXITCODE -eq 0 -and $listOutput -match [regex]::Escape($cursorId)) {
+            $installed = $true
+        }
+    } catch {
+        Write-Warning "winget list failed to detect Cursor ($_). Continuing with installation attempt."
+    }
+
+    if ($installed) {
+        Write-Host "Cursor already installed."
+        return
+    }
+
+    Write-Host "Installing Cursor editor via winget..."
+    $arguments = @(
+        "install", "-e", "--id", $cursorId,
+        "--accept-package-agreements", "--accept-source-agreements"
+    )
+    $proc = Start-Process -FilePath "winget" -ArgumentList $arguments -NoNewWindow -Wait -PassThru
+    switch ($proc.ExitCode) {
+        0 {
+            Write-Host "Cursor installation completed successfully."
+        }
+        3010 {
+            Write-Warning "Cursor installation signaled a reboot requirement. Restart Windows to finish installation, then rerun this script if needed."
+        }
+        default {
+            Write-Warning "Cursor installer exited with code $($proc.ExitCode). Install Cursor manually from https://cursor.sh/download if the editor is still missing."
+        }
+    }
+}
+
 function Enable-WindowsFeatures {
     Write-Section "Enabling Windows features for WSL2"
     $features = @(
@@ -521,6 +565,7 @@ Ensure-WslDistribution -Name $DistroName
 Ensure-WslDefault -Name $DistroName
 Ensure-WslInitialized -Name $DistroName
 Ensure-WslPackages
+Ensure-Cursor
 
 if (-not $SkipDockerInstall) {
     Ensure-DockerDesktop
