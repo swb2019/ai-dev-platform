@@ -522,8 +522,6 @@ function Ensure-CloudBootstrap {
         return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
     }
 
-    $completed = $false
-
     $defaultProject = if ([string]::IsNullOrWhiteSpace($env:GCP_PROJECT_ID)) { ($RepoSlug -split '/')[1] } else { $env:GCP_PROJECT_ID }
     $projectId = Read-Host "Enter GCP project ID [$defaultProject]"
     if ([string]::IsNullOrWhiteSpace($projectId)) { $projectId = $defaultProject }
@@ -544,96 +542,134 @@ function Ensure-CloudBootstrap {
     $previousWslenv = [Environment]::GetEnvironmentVariable('WSLENV', 'Process')
     $generatedInfisical = $false
 
-    $generateInfInput = Read-Host "Generate a strong Infisical token now? [y/N]"
-    if ($generateInfInput -match '^[Yy]') {
-        $infToken = New-RandomSecret 48
-        Write-Section "Generated Infisical token"
-        Write-Host "INFISICAL_TOKEN: $infToken" -ForegroundColor Yellow
-        Write-Host "Store this token immediately in your password manager; it will not be persisted by the script." -ForegroundColor Yellow
-        [Environment]::SetEnvironmentVariable('INFISICAL_TOKEN', $infToken, 'Process')
-        $wslenvParts = @()
-        if (-not [string]::IsNullOrWhiteSpace($previousWslenv)) {
-            $wslenvParts = $previousWslenv -split ';' | Where-Object { $_ -ne '' }
+    try {
+        Write-Section "Verifying GitHub repository access"
+        $repoCheck = Invoke-Wsl -Command "gh api repos/$repoTarget --silent"
+        if ($repoCheck.ExitCode -ne 0) {
+            Write-Warning "Repository '$repoTarget' was not found."
+            $createPrompt = Read-Host "Create $repoTarget now using 'gh repo create'? [Y/n]"
+            if ($createPrompt -notmatch '^[Yy]') {
+                Write-Warning "Skipping cloud bootstrap until the repository exists."
+                return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
+            }
+            $createCommands = @(
+                "cd \$HOME/ai-dev-platform",
+                "git remote remove origin >/dev/null 2>&1 || true",
+                "git remote add origin https://github.com/$repoTarget.git",
+                "gh repo create $repoTarget --private --source \$HOME/ai-dev-platform --push --confirm --disable-wiki --disable-issues",
+                "git remote remove upstream >/dev/null 2>&1 || true"
+            )
+            $createResult = Invoke-Wsl -Command ($createCommands -join '; ')
+            if ($createResult.ExitCode -ne 0) {
+                Write-Warning "Automatic repository creation failed. Run 'gh repo create $repoTarget --private --source ./ --push' manually and rerun this step."
+                return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
+            }
+            Write-Host "Repository $repoTarget created and populated via GitHub CLI." -ForegroundColor Green
         }
-        if ($wslenvParts -notcontains 'INFISICAL_TOKEN/p') {
-            $wslenvParts += 'INFISICAL_TOKEN/p'
+
+        $repoAdminCheck = Invoke-Wsl -Command "gh api repos/$repoTarget --jq .permissions.admin"
+        if ($repoAdminCheck.ExitCode -ne 0 -or $repoAdminCheck.Output.Trim().ToLower() -ne 'true') {
+            Write-Warning "GitHub user lacks admin permissions on '$repoTarget'. Grant admin rights or choose a repository you administer, then rerun this step."
+            return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
         }
-        [Environment]::SetEnvironmentVariable('WSLENV', ($wslenvParts -join ';'), 'Process')
-        $generatedInfisical = $true
-    }
 
-    Write-Section "Google Cloud CLI authentication"
-    Write-Host "A browser window will launch for gcloud login. Complete the prompt and return here." -ForegroundColor Yellow
-    $loginResult = Invoke-Wsl -Command "gcloud auth login --launch-browser"
-    if ($loginResult.ExitCode -ne 0) {
-        Write-Warning "gcloud auth login failed (exit $($loginResult.ExitCode)). Complete authentication manually and rerun this step later."
-        goto Cleanup
-    }
-
-    $setProject = Invoke-Wsl -Command "gcloud config set project $projectId"
-    if ($setProject.ExitCode -ne 0) {
-        Write-Warning "Unable to set default project in gcloud (exit $($setProject.ExitCode))."
-    }
-
-    $adcResult = Invoke-Wsl -Command "gcloud auth application-default login --launch-browser"
-    if ($adcResult.ExitCode -ne 0) {
-        Write-Warning "gcloud application-default login failed (exit $($adcResult.ExitCode)). Continue after configuring ADC manually."
-        goto Cleanup
-    }
-
-    Write-Section "Terraform bootstrap"
-    Write-Host "The following defaults will be prefilled. Press Enter to accept them when prompted." -ForegroundColor Yellow
-    $bootstrapCommands = @(
-        "export GCP_PROJECT_ID='$projectId'",
-        "export GCP_REGION='$region'",
-        "export GITHUB_ORG_REPO='$repoTarget'",
-        "export TERRAFORM_STATE_BUCKET='$bucket'",
-        "export STAGING_KSA_NAMESPACE='web'",
-        "export STAGING_KSA_NAME='web-sa'",
-        "export PRODUCTION_KSA_NAMESPACE='web'",
-        "export PRODUCTION_KSA_NAME='web-sa'",
-        "cd \$HOME/ai-dev-platform",
-        "./scripts/bootstrap-infra.sh"
-    )
-    $bootstrapResult = Invoke-Wsl -Command ($bootstrapCommands -join '; ')
-    if ($bootstrapResult.ExitCode -ne 0) {
-        Write-Warning "Infrastructure bootstrap exited with $($bootstrapResult.ExitCode). Review the output above and rerun './scripts/bootstrap-infra.sh' inside WSL if necessary."
-        goto Cleanup
-    }
-
-    Write-Section "GitHub environment configuration"
-    $configureCommands = @(
-        "cd \$HOME/ai-dev-platform",
-        "./scripts/configure-github-env.sh staging",
-        "./scripts/configure-github-env.sh prod"
-    )
-    $configureResult = Invoke-Wsl -Command ($configureCommands -join '; ')
-    if ($configureResult.ExitCode -ne 0) {
-        Write-Warning "configure-github-env.sh exited with $($configureResult.ExitCode). Rerun the script inside WSL after addressing the issue."
-        goto Cleanup
-    }
-
-    Write-Host "Cloud authentication and environment configuration completed." -ForegroundColor Green
-    $completed = $true
-    goto Cleanup
-
-:Cleanup
-    if ($generatedInfisical) {
-        if ([string]::IsNullOrWhiteSpace($previousInfisical)) {
-            [Environment]::SetEnvironmentVariable('INFISICAL_TOKEN', $null, 'Process')
-        } else {
-            [Environment]::SetEnvironmentVariable('INFISICAL_TOKEN', $previousInfisical, 'Process')
+        $generateInfInput = Read-Host "Generate a strong Infisical token now? [y/N]"
+        if ($generateInfInput -match '^[Yy]') {
+            $infToken = New-RandomSecret 48
+            Write-Section "Generated Infisical token"
+            Write-Host "INFISICAL_TOKEN: $infToken" -ForegroundColor Yellow
+            Write-Host "Store this token immediately in your password manager; it will not be persisted by the script." -ForegroundColor Yellow
+            [Environment]::SetEnvironmentVariable('INFISICAL_TOKEN', $infToken, 'Process')
+            $wslenvParts = @()
+            if (-not [string]::IsNullOrWhiteSpace($previousWslenv)) {
+                $wslenvParts = $previousWslenv -split ';' | Where-Object { $_ -ne '' }
+            }
+            if ($wslenvParts -notcontains 'INFISICAL_TOKEN/p') {
+                $wslenvParts += 'INFISICAL_TOKEN/p'
+            }
+            [Environment]::SetEnvironmentVariable('WSLENV', ($wslenvParts -join ';'), 'Process')
+            $generatedInfisical = $true
         }
-        [Environment]::SetEnvironmentVariable('WSLENV', $previousWslenv, 'Process')
-    }
 
-    if ($completed) {
+        Write-Section "Google Cloud CLI authentication"
+        Write-Host "A browser window will launch for gcloud login. Complete the prompt and return here." -ForegroundColor Yellow
+        $loginResult = Invoke-Wsl -Command "gcloud auth login --launch-browser"
+        if ($loginResult.ExitCode -ne 0) {
+            Write-Warning "gcloud auth login failed (exit $($loginResult.ExitCode)). Complete authentication manually and rerun this step later."
+            return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $generatedInfisical }
+        }
+
+        $describeProject = Invoke-Wsl -Command "gcloud projects describe $projectId"
+        if ($describeProject.ExitCode -ne 0) {
+            Write-Warning "Project '$projectId' was not found or you do not have access. Create the project at https://console.cloud.google.com/projectcreate and rerun this step."
+            return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $generatedInfisical }
+        }
+
+        $setProject = Invoke-Wsl -Command "gcloud config set project $projectId"
+        if ($setProject.ExitCode -ne 0) {
+            Write-Warning "Unable to set default project in gcloud (exit $($setProject.ExitCode))."
+        }
+
+        $billingStatus = Invoke-Wsl -Command "gcloud beta billing projects describe $projectId --format=value(billingEnabled)"
+        if ($billingStatus.ExitCode -ne 0 -or $billingStatus.Output.Trim().ToLower() -ne 'true') {
+            Write-Warning "Billing is not enabled for project '$projectId'. Enable billing in the Google Cloud console and rerun this step."
+            return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $generatedInfisical }
+        }
+
+        $adcResult = Invoke-Wsl -Command "gcloud auth application-default login --launch-browser"
+        if ($adcResult.ExitCode -ne 0) {
+            Write-Warning "gcloud application-default login failed (exit $($adcResult.ExitCode)). Continue after configuring ADC manually."
+            return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $generatedInfisical }
+        }
+
+        Write-Section "Terraform bootstrap"
+        Write-Host "The following defaults will be prefilled. Press Enter to accept them when prompted." -ForegroundColor Yellow
+        $bootstrapCommands = @(
+            "export GCP_PROJECT_ID='$projectId'",
+            "export GCP_REGION='$region'",
+            "export GITHUB_ORG_REPO='$repoTarget'",
+            "export TERRAFORM_STATE_BUCKET='$bucket'",
+            "export STAGING_KSA_NAMESPACE='web'",
+            "export STAGING_KSA_NAME='web-sa'",
+            "export PRODUCTION_KSA_NAMESPACE='web'",
+            "export PRODUCTION_KSA_NAME='web-sa'",
+            "cd \$HOME/ai-dev-platform",
+            "./scripts/bootstrap-infra.sh"
+        )
+        $bootstrapResult = Invoke-Wsl -Command ($bootstrapCommands -join '; ')
+        if ($bootstrapResult.ExitCode -ne 0) {
+            Write-Warning "Infrastructure bootstrap exited with $($bootstrapResult.ExitCode). Review the output above and rerun './scripts/bootstrap-infra.sh' inside WSL if necessary."
+            return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $generatedInfisical }
+        }
+
+        Write-Section "GitHub environment configuration"
+        $configureCommands = @(
+            "cd \$HOME/ai-dev-platform",
+            "./scripts/configure-github-env.sh staging",
+            "./scripts/configure-github-env.sh prod"
+        )
+        $configureResult = Invoke-Wsl -Command ($configureCommands -join '; ')
+        if ($configureResult.ExitCode -ne 0) {
+            Write-Warning "configure-github-env.sh exited with $($configureResult.ExitCode). Rerun the script inside WSL after addressing the issue."
+            return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $generatedInfisical }
+        }
+
+        Write-Host "Cloud authentication and environment configuration completed." -ForegroundColor Green
         return [PSCustomObject]@{ Completed = $true; GeneratedInfisical = $generatedInfisical }
     }
-    return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $generatedInfisical }
+    finally {
+        if ($generatedInfisical) {
+            if ([string]::IsNullOrWhiteSpace($previousInfisical)) {
+                [Environment]::SetEnvironmentVariable('INFISICAL_TOKEN', $null, 'Process')
+            } else {
+                [Environment]::SetEnvironmentVariable('INFISICAL_TOKEN', $previousInfisical, 'Process')
+            }
+            [Environment]::SetEnvironmentVariable('WSLENV', $previousWslenv, 'Process')
+        }
+    }
 }
 
-function Get-WslEnvPrefix {
+function Get-WslEnvPrefixfunction Get-WslEnvPrefix {
     $lines = @()
     if ($env:GH_TOKEN) {
         $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:GH_TOKEN))
