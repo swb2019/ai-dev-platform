@@ -26,48 +26,17 @@ env:
   TERRAFORM_VERSION: '1.8.5'
 
 jobs:
+  context:
+    name: Context
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Terraform workflow triggered on $GITHUB_REF via $GITHUB_EVENT_NAME"
+
   skip:
     if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - run: echo "Terraform applies run only on main; current ref ${{ github.ref }}."
-
-  provision-check:
-    name: Provision Guard
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    outputs:
-      ready: ${{ steps.evaluate.outputs.ready }}
-      reason: ${{ steps.evaluate.outputs.reason }}
-    steps:
-      - id: evaluate
-        run: |
-          missing=()
-          note() { printf '::notice::%s\n' "$1"; }
-          check_secret() {
-            local key="$1"
-            local value="$2"
-            if [ -z "$value" ]; then
-              missing+=("$key")
-            fi
-          }
-          check_secret "TERRAFORM_SERVICE_ACCOUNT" "${{ secrets.TERRAFORM_SERVICE_ACCOUNT }}"
-          check_secret "WORKLOAD_IDENTITY_PROVIDER" "${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}"
-          check_secret "GCP_PROJECT_ID" "${{ secrets.GCP_PROJECT_ID }}"
-          check_secret "GCP_REGION" "${{ secrets.GCP_REGION }}"
-          check_secret "RUNTIME_KSA_NAMESPACE" "${{ secrets.RUNTIME_KSA_NAMESPACE }}"
-          check_secret "RUNTIME_KSA_NAME" "${{ secrets.RUNTIME_KSA_NAME }}"
-          check_secret "BA_ATTESTORS" "${{ secrets.BA_ATTESTORS }}"
-          if [ "${#missing[@]}" -gt 0 ]; then
-            reason="Missing secrets: ${missing[*]}"
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "reason=${reason//$'\n'/ }" >> "$GITHUB_OUTPUT"
-            note "Terraform apply skipped – ${reason}"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "reason=ready" >> "$GITHUB_OUTPUT"
-            note "Terraform apply prerequisites satisfied."
-          fi
 
   plan:
     name: Plan (staging)
@@ -167,10 +136,90 @@ jobs:
           echo "Terraform plan failed"
           exit 1
 
+  apply-gate:
+    name: Terraform Apply - Gate
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.evaluate.outputs.should_run }}
+      reason: ${{ steps.evaluate.outputs.reason }}
+      target_env: ${{ steps.evaluate.outputs.target_env }}
+    steps:
+      - id: evaluate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          STAGING_ENABLED: ${{ vars.STAGING_INFRA_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_INFRA_ENABLED }}
+          SECRET_TERRAFORM_SERVICE_ACCOUNT: ${{ secrets.TERRAFORM_SERVICE_ACCOUNT }}
+          SECRET_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          SECRET_GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          SECRET_GCP_REGION: ${{ secrets.GCP_REGION }}
+          SECRET_RUNTIME_KSA_NAMESPACE: ${{ secrets.RUNTIME_KSA_NAMESPACE }}
+          SECRET_RUNTIME_KSA_NAME: ${{ secrets.RUNTIME_KSA_NAME }}
+          SECRET_BA_ATTESTORS: ${{ secrets.BA_ATTESTORS }}
+        run: |
+          set -euo pipefail
+          should_run=false
+          reason=""
+          target=""
+
+          if [ "$EVENT_NAME" != "push" ]; then
+            reason="event_not_push"
+          else
+            if [ "$REF" = "refs/heads/main" ]; then
+              target="staging"
+              if [ "$STAGING_ENABLED" != "true" ]; then
+                reason+=" enable vars.STAGING_INFRA_ENABLED"
+              fi
+            elif [[ "$REF" == refs/tags/v* ]]; then
+              target="production"
+              if [ "$PRODUCTION_ENABLED" != "true" ]; then
+                reason+=" enable vars.PRODUCTION_INFRA_ENABLED"
+              fi
+            else
+              reason="non_deploy_ref"
+            fi
+          fi
+
+          check_secret() {
+            local value="$1"
+            local name="$2"
+            if [ -z "$value" ]; then
+              reason+=" missing_secret:${name}"
+            fi
+          }
+
+          if [ -z "$reason" ]; then
+            check_secret "$SECRET_TERRAFORM_SERVICE_ACCOUNT" "TERRAFORM_SERVICE_ACCOUNT"
+            check_secret "$SECRET_WORKLOAD_IDENTITY_PROVIDER" "WORKLOAD_IDENTITY_PROVIDER"
+            check_secret "$SECRET_GCP_PROJECT_ID" "GCP_PROJECT_ID"
+            check_secret "$SECRET_GCP_REGION" "GCP_REGION"
+            check_secret "$SECRET_RUNTIME_KSA_NAMESPACE" "RUNTIME_KSA_NAMESPACE"
+            check_secret "$SECRET_RUNTIME_KSA_NAME" "RUNTIME_KSA_NAME"
+            check_secret "$SECRET_BA_ATTESTORS" "BA_ATTESTORS"
+          fi
+
+          if [ -z "$reason" ]; then
+            should_run=true
+            reason="ready"
+          fi
+
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason# }" >> "$GITHUB_OUTPUT"
+          echo "target_env=${target:-none}" >> "$GITHUB_OUTPUT"
+
+  explain-apply-skip:
+    name: Terraform Apply (skipped)
+    needs: apply-gate
+    if: ${{ needs.apply-gate.outputs.should_run != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Terraform apply skipped – ${{ needs.apply-gate.outputs.reason }}"
+
   apply:
     name: Apply
-    needs: provision-check
-    if: ${{ github.event_name == 'push' && needs.provision-check.outputs.ready == 'true' && ((github.ref == 'refs/heads/main' && vars.STAGING_INFRA_ENABLED == 'true') || (startsWith(github.ref, 'refs/tags/v') && vars.PRODUCTION_INFRA_ENABLED == 'true')) }}
+    needs: apply-gate
+    if: ${{ needs.apply-gate.outputs.should_run == 'true' }}
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'staging' || 'production' }}
     concurrency:
