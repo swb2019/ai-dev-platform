@@ -58,33 +58,53 @@ read -r -p "Enter ${LABEL} note ID [${DEFAULTS[note_id]}]: " NOTE_ID || true
 NOTE_ID="${NOTE_ID:-${DEFAULTS[note_id]}}"
 
 DEFAULT_KEY_PATH="$HOME/.config/cosign/${LABEL}.pub"
-while true; do
-  read -r -p "Enter path to ${LABEL} public key file [$DEFAULT_KEY_PATH]: " PUBKEY_FILE || true
-  PUBKEY_FILE="${PUBKEY_FILE:-$DEFAULT_KEY_PATH}"
-  PUBKEY_FILE="${PUBKEY_FILE/#~/$HOME}"
-  if [[ -f "$PUBKEY_FILE" ]]; then
-    break
+
+read_pubkey_path() {
+  local label="$1"
+  local default_path="$2"
+  local response=""
+  if [[ -t 0 && -t 1 ]]; then
+    read -r -p "Enter path to ${label} public key file [${default_path}]: " response || true
+  else
+    printf "Using default %s public key path %s (non-interactive).\n" "$label" "$default_path" >&2
   fi
-  echo "File $PUBKEY_FILE not found. Provide a PEM-formatted public key (e.g. cosign.pub)." >&2
-  if [[ ! -d "$(dirname "$PUBKEY_FILE")" ]]; then
-    mkdir -p "$(dirname "$PUBKEY_FILE")"
+  response="${response:-$default_path}"
+  response="${response/#~/$HOME}"
+  echo "$response"
+}
+
+generate_cosign_key() {
+  local label="$1"
+  local pubkey="$2"
+  local key_prefix="${pubkey%.pub}"
+  local dir
+  dir="$(dirname "$pubkey")"
+  mkdir -p "$dir"
+  if [[ -f "$pubkey" ]]; then
+    return 0
   fi
-  if command -v cosign >/dev/null 2>&1 &&
-     read -r -p "Generate a new Cosign key pair for ${LABEL} now? [Y/n] " answer && [[ "${answer:-Y}" =~ ^[Yy]$ ]]; then
-    read -r -p "Enter output prefix for the key pair [${PUBKEY_FILE%.pub}]: " KEY_PREFIX || true
-    KEY_PREFIX="${KEY_PREFIX:-${PUBKEY_FILE%.pub}}"
-    KEY_PREFIX="${KEY_PREFIX/#~/$HOME}"
-    mkdir -p "$(dirname "$KEY_PREFIX")"
-    echo "Generating Cosign key pair at ${KEY_PREFIX}" >&2
-    cosign generate-key-pair --output-key-prefix "$KEY_PREFIX"
-    PUBKEY_FILE="${KEY_PREFIX}.pub"
-    if [[ -f "$PUBKEY_FILE" ]]; then
-      break
-    fi
-    echo "Cosign did not create $PUBKEY_FILE; please provide a key path." >&2
+  if ! command -v cosign >/dev/null 2>&1; then
+    echo "Cosign CLI not found. Install it inside WSL (e.g., 'sudo apt-get install -y cosign') or provide an existing PEM public key." >&2
+    exit 1
   fi
-  echo "Please provide an existing PEM public key." >&2
-done
+  echo "Generating Cosign key pair for ${label} at ${key_prefix}.{key,pub}..." >&2
+  local pwfile
+  pwfile="$(mktemp)"
+  printf '\n' >"$pwfile"
+  if ! cosign generate-key-pair --output-key-prefix "$key_prefix" --password-file "$pwfile" >/dev/null 2>&1; then
+    rm -f "$pwfile"
+    echo "Failed to generate Cosign key pair for ${label}. Ensure the directory is writable or provide an existing key." >&2
+    exit 1
+  fi
+  rm -f "$pwfile"
+  if [[ ! -f "$pubkey" ]]; then
+    echo "Cosign reported success but ${pubkey} is missing. Provide a valid PEM public key." >&2
+    exit 1
+  fi
+}
+
+PUBKEY_FILE="$(read_pubkey_path "$LABEL" "$DEFAULT_KEY_PATH")"
+generate_cosign_key "$LABEL" "$PUBKEY_FILE"
 
 read -r -p "Enter ${LABEL} public key ID [${DEFAULTS[key_id]}]: " PUBKEY_ID || true
 PUBKEY_ID="${PUBKEY_ID:-${DEFAULTS[key_id]}}"
@@ -163,4 +183,3 @@ then
 fi
 
 printf "%s\n" "$ATTESTOR_RESOURCE"
-
