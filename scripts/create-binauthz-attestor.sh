@@ -78,14 +78,25 @@ ensure_cosign_available() {
     return
   fi
   echo "Cosign CLI not found. Attempting automatic installation..." >&2
-  local sudo_cmd=""
-  if command -v sudo >/dev/null 2>&1; then
-    sudo_cmd="sudo "
-  fi
   if command -v apt-get >/dev/null 2>&1; then
-    if ${sudo_cmd}apt-get update && DEBIAN_FRONTEND=noninteractive ${sudo_cmd}apt-get install -y cosign >/dev/null 2>&1; then
-      echo "Cosign installed via apt." >&2
-      return
+    if [[ $EUID -eq 0 ]]; then
+      echo "Installing cosign with apt-get (running as root)..." >&2
+      if apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y cosign >/dev/null 2>&1; then
+        echo "Cosign installed via apt." >&2
+        return
+      fi
+      echo "apt-get installation as root failed. Falling back to direct download." >&2
+    elif command -v sudo >/dev/null 2>&1; then
+      if sudo -n true >/dev/null 2>&1; then
+        echo "Installing cosign with sudo apt-get..." >&2
+        if sudo -n apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive sudo -n apt-get install -y cosign >/dev/null 2>&1; then
+          echo "Cosign installed via apt." >&2
+          return
+        fi
+        echo "sudo apt-get installation failed. Falling back to direct download." >&2
+      else
+        echo "sudo requires an interactive password; skipping apt-get installation." >&2
+      fi
     fi
   fi
   local arch
