@@ -1681,6 +1681,13 @@ escape_pwsh() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
 
+# Try wslview if available (WSL-friendly browser launcher)
+if command -v wslview >/dev/null 2>&1; then
+  if wslview "$url" >/dev/null 2>&1; then
+    exit 0
+  fi
+fi
+
 escaped="$(escape_pwsh "$url")"
 powershell.exe -NoProfile -Command "Start-Process '$escaped'" >/dev/null 2>&1 && exit 0
 /mnt/c/Windows/System32/cmd.exe /c start "" "$url" >/dev/null 2>&1 && exit 0
