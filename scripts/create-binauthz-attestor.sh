@@ -73,6 +73,59 @@ read_pubkey_path() {
   echo "$response"
 }
 
+ensure_cosign_available() {
+  if command -v cosign >/dev/null 2>&1; then
+    return
+  fi
+  echo "Cosign CLI not found. Attempting automatic installation..." >&2
+  local sudo_cmd=""
+  if command -v sudo >/dev/null 2>&1; then
+    sudo_cmd="sudo "
+  fi
+  if command -v apt-get >/dev/null 2>&1; then
+    if ${sudo_cmd}apt-get update && DEBIAN_FRONTEND=noninteractive ${sudo_cmd}apt-get install -y cosign >/dev/null 2>&1; then
+      echo "Cosign installed via apt." >&2
+      return
+    fi
+  fi
+  local arch
+  arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
+  case "$arch" in
+    amd64|x86_64)
+      arch_asset="amd64"
+      ;;
+    arm64|aarch64)
+      arch_asset="arm64"
+      ;;
+    *)
+      echo "Unsupported architecture '$arch'. Install cosign manually and rerun." >&2
+      exit 1
+      ;;
+  esac
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  local asset="cosign-linux-${arch_asset}"
+  local url="https://github.com/sigstore/cosign/releases/latest/download/${asset}"
+  echo "Downloading cosign binary from ${url}..." >&2
+  if ! curl -fsSL -o "$tmpdir/cosign" "$url"; then
+    echo "Failed to download cosign binary. Install cosign manually and rerun." >&2
+    rm -rf "$tmpdir"
+    exit 1
+  fi
+  chmod +x "$tmpdir/cosign"
+  local target_dir="$HOME/.local/bin"
+  mkdir -p "$target_dir"
+  mv "$tmpdir/cosign" "$target_dir/cosign"
+  rm -rf "$tmpdir"
+  PATH="$target_dir:$PATH"
+  export PATH
+  if ! command -v cosign >/dev/null 2>&1; then
+    echo "Cosign installation failed. Install it manually and rerun." >&2
+    exit 1
+  fi
+  echo "Cosign installed at $target_dir/cosign." >&2
+}
+
 generate_cosign_key() {
   local label="$1"
   local pubkey="$2"
@@ -83,10 +136,7 @@ generate_cosign_key() {
   if [[ -f "$pubkey" ]]; then
     return 0
   fi
-  if ! command -v cosign >/dev/null 2>&1; then
-    echo "Cosign CLI not found. Install it inside WSL (e.g., 'sudo apt-get install -y cosign') or provide an existing PEM public key." >&2
-    exit 1
-  fi
+  ensure_cosign_available
   echo "Generating Cosign key pair for ${label} at ${key_prefix}.{key,pub}..." >&2
   local pwfile
   pwfile="$(mktemp)"
