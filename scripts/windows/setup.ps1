@@ -1016,6 +1016,66 @@ function Ensure-Cursor {
     }
 }
 
+function Ensure-CursorExtensions {
+    Write-Section "Ensuring Cursor AI extensions are installed"
+    $cursorPath = Get-CursorInstallPath
+    if (-not $cursorPath) {
+        Write-Warning "Cursor executable not located; skipping extension installation."
+        Write-CursorLog "Cursor path unavailable; extension installation skipped."
+        return
+    }
+
+    $targets = @(
+        [pscustomobject]@{ Id = "openai.chatgpt"; Label = "OpenAI Codex" },
+        [pscustomobject]@{ Id = "anthropic.claude-code"; Label = "Claude Code" }
+    )
+
+    $installedExtensions = @()
+    try {
+        $rawList = & "$cursorPath" --list-extensions 2>$null
+        if ($rawList) {
+            $installedExtensions = $rawList -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        }
+    } catch {
+        Write-CursorLog ("Failed to list existing Cursor extensions: {0}" -f $_.Exception.Message)
+        $installedExtensions = @()
+    }
+
+    foreach ($target in $targets) {
+        $extensionId = $target.Id
+        $label = $target.Label
+        $alreadyInstalled = $false
+        foreach ($entry in $installedExtensions) {
+            if ($entry.Trim().ToLowerInvariant() -eq $extensionId) {
+                $alreadyInstalled = $true
+                break
+            }
+        }
+        if ($alreadyInstalled) {
+            Write-CursorLog ("Cursor extension {0} is already installed." -f $extensionId)
+            continue
+        }
+
+        Write-Host ("Installing Cursor extension {0} ({1})..." -f $label, $extensionId)
+        Write-CursorLog ("Installing Cursor extension {0}." -f $extensionId)
+        try {
+            & "$cursorPath" --install-extension $extensionId --force *> $null
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -eq 0) {
+                Write-Host ("Cursor extension {0} installed successfully." -f $label)
+                Write-CursorLog ("Cursor extension {0} installed successfully." -f $extensionId)
+                $installedExtensions += $extensionId
+            } else {
+                Write-Warning ("Failed to install Cursor extension {0} (exit {1}). Install it manually via the Cursor marketplace." -f $label, $exitCode)
+                Write-CursorLog ("Cursor extension {0} installation failed with exit code {1}." -f $extensionId, $exitCode)
+            }
+        } catch {
+            Write-Warning ("Failed to install Cursor extension {0} ({1}). Install it manually via the Cursor marketplace." -f $label, $_.Exception.Message)
+            Write-CursorLog ("Cursor extension {0} installation error: {1}" -f $extensionId, $_.Exception.Message)
+        }
+    }
+}
+
 function Enable-WindowsFeatures {
     Write-Section "Enabling Windows features for WSL2"
     $features = @(
@@ -1747,7 +1807,7 @@ chmod +x /tmp/open-in-windows.sh
             "export STAGING_KSA_NAME='web-sa'",
             "export PRODUCTION_KSA_NAMESPACE='web'",
             "export PRODUCTION_KSA_NAME='web-sa'",
-            "cd $HOME/ai-dev-platform",
+            'cd $HOME/ai-dev-platform',
             "./scripts/bootstrap-infra.sh"
         )
         $bootstrapResult = Invoke-Wsl -Command ($bootstrapCommands -join '; ')
@@ -1758,7 +1818,7 @@ chmod +x /tmp/open-in-windows.sh
 
         Write-Section "GitHub environment configuration"
         $configureCommands = @(
-            "cd $HOME/ai-dev-platform",
+            'cd $HOME/ai-dev-platform',
             "./scripts/configure-github-env.sh staging",
             "./scripts/configure-github-env.sh prod"
         )
@@ -1904,6 +1964,7 @@ Ensure-WslDefault -Name $DistroName
 Ensure-WslInitialized -Name $DistroName
 Ensure-WslPackages
 Ensure-Cursor
+Ensure-CursorExtensions
 
 if (-not $SkipDockerInstall) {
     Ensure-DockerDesktop
