@@ -753,17 +753,22 @@ function Open-UrlInBrowser {
     if ([string]::IsNullOrWhiteSpace($Url)) {
         return
     }
+    $target = $Url
+    if ($target -and ($target.IndexOf(' ') -ge 0)) {
+        $target = [Uri]::EscapeUriString($target)
+    }
+    $message = if ($Description) { $Description } else { $Url }
     try {
-        Write-Host ("Opening {0}..." -f (if ($Description) { $Description } else { $Url })) -ForegroundColor Yellow
-        Start-Process -FilePath $Url | Out-Null
+        Write-Host ("Opening {0}..." -f $message) -ForegroundColor Yellow
+        Start-Process -FilePath $target | Out-Null
         return
     } catch {
-        Write-CursorLog ("Start-Process launch for {0} failed: {1}" -f $Url, $_.Exception.Message)
+        Write-CursorLog ("Start-Process launch for {0} failed: {1}" -f $target, $_.Exception.Message)
     }
     try {
-        Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "start", "", $Url) -WindowStyle Hidden | Out-Null
+        Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "start", "", $target) -WindowStyle Hidden | Out-Null
     } catch {
-        Write-Warning ("Unable to open {0} automatically ({1})." -f (if ($Description) { $Description } else { $Url }), $_.Exception.Message)
+        Write-Warning ("Unable to open {0} automatically ({1})." -f $message, $_.Exception.Message)
     }
 }
 
