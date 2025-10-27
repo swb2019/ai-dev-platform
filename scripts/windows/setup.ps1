@@ -718,64 +718,40 @@ function Ensure-WslInteropEnabled {
         }
     }
     Write-Host "WSL interoperability appears disabled. Attempting to re-enable automatically..." -ForegroundColor Yellow
-    $canUseSudo = Test-WslSudo
     $enableScript = @"
 set -e
 if [ ! -d /proc/sys/fs/binfmt_misc ]; then
   exit 11
 fi
 if ! mountpoint -q /proc/sys/fs/binfmt_misc; then
-  if id -u | grep -q '^0$'; then
-    mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
-  elif command -v sudo >/dev/null 2>&1; then
-    if sudo -n true >/dev/null 2>&1; then
-      sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
-    else
-      exit 12
-    fi
-  else
-    exit 12
-  fi
+  modprobe binfmt_misc 2>/dev/null || true
+  mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc || exit 12
 fi
 if [ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]; then
-  if [ -w /proc/sys/fs/binfmt_misc/register ]; then
-    echo ':WSLInterop:M::MZ::/init:' > /proc/sys/fs/binfmt_misc/register
-  elif command -v sudo >/dev/null 2>&1; then
-    if sudo -n true >/dev/null 2>&1; then
-      sudo sh -c "echo ':WSLInterop:M::MZ::/init:' > /proc/sys/fs/binfmt_misc/register"
-    else
-      exit 13
-    fi
-  else
-    exit 13
-  fi
+  echo ':WSLInterop:M::MZ::/init:' > /proc/sys/fs/binfmt_misc/register
 fi
-if [ -w /proc/sys/fs/binfmt_misc/WSLInterop ]; then
-  echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop
-elif command -v sudo >/dev/null 2>&1; then
-  if sudo -n true >/dev/null 2>&1; then
-    sudo sh -c 'echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop'
-  else
-    exit 14
-  fi
-else
+if [ ! -w /proc/sys/fs/binfmt_misc/WSLInterop ]; then
   exit 14
 fi
+echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop
 exit 0
 "@
-    $enableResult = Invoke-Wsl -Command $enableScript
+    $enableResult = Invoke-Wsl -Command $enableScript -AsRoot
     if ($enableResult.ExitCode -eq 0) {
         Write-Host "WSL interoperability re-enabled." -ForegroundColor Green
         return
     }
     Write-Warning "Unable to re-enable WSL interoperability automatically."
-    if (-not $canUseSudo) {
-        Write-Warning "Inside WSL, run: sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && sudo sh -c 'echo ":WSLInterop:M::MZ::/init:" > /proc/sys/fs/binfmt_misc/register' && sudo sh -c 'echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop'"
-        Write-Warning "After enabling interoperability, rerun this script."
-    } else {
-        Write-Warning "Ensure /proc/sys/fs/binfmt_misc is mounted, then run inside WSL: sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && sudo sh -c 'echo ":WSLInterop:M::MZ::/init:" > /proc/sys/fs/binfmt_misc/register' && sudo sh -c 'echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop'"
-    }
+    $manualInstructionsTemplate = @'
+Run this from an elevated PowerShell prompt:
+  wsl.exe -d {0} --user root -- sh -lc "modprobe binfmt_misc 2>/dev/null || true; mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true; if [ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]; then echo ':WSLInterop:M::MZ::/init:' > /proc/sys/fs/binfmt_misc/register; fi; echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop"
+After enabling interoperability, rerun this script.
+'@
+    $manualInstructions = $manualInstructionsTemplate -f $DistroName
+    Write-Warning $manualInstructions
 }
+
+
 
 function Invoke-RobustDownload {
     param(
