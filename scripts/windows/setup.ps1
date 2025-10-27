@@ -724,14 +724,27 @@ set -e
 if [ ! -d /proc/sys/fs/binfmt_misc ]; then
   exit 11
 fi
+if ! mountpoint -q /proc/sys/fs/binfmt_misc; then
+  if id -u | grep -q '^0$'; then
+    mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+  elif command -v sudo >/dev/null 2>&1; then
+    if sudo -n true >/dev/null 2>&1; then
+      sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+    else
+      exit 12
+    fi
+  else
+    exit 12
+  fi
+fi
 if [ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]; then
   if [ -w /proc/sys/fs/binfmt_misc/register ]; then
     echo ':WSLInterop:M::MZ::/init:' > /proc/sys/fs/binfmt_misc/register
   elif command -v sudo >/dev/null 2>&1; then
     if sudo -n true >/dev/null 2>&1; then
-      sudo sh -c \"echo ':WSLInterop:M::MZ::/init:' > /proc/sys/fs/binfmt_misc/register\"
+      sudo sh -c "echo ':WSLInterop:M::MZ::/init:' > /proc/sys/fs/binfmt_misc/register"
     else
-      exit 12
+      exit 13
     fi
   else
     exit 13
@@ -746,7 +759,7 @@ elif command -v sudo >/dev/null 2>&1; then
     exit 14
   fi
 else
-  exit 15
+  exit 14
 fi
 exit 0
 "@
@@ -757,9 +770,10 @@ exit 0
     }
     Write-Warning "Unable to re-enable WSL interoperability automatically."
     if (-not $canUseSudo) {
-        Write-Warning "Run inside WSL: sudo sh -c 'echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop'. Then rerun this script."
+        Write-Warning "Inside WSL, run: sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && sudo sh -c 'echo ":WSLInterop:M::MZ::/init:" > /proc/sys/fs/binfmt_misc/register' && sudo sh -c 'echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop'"
+        Write-Warning "After enabling interoperability, rerun this script."
     } else {
-        Write-Warning "Ensure /proc/sys/fs/binfmt_misc is mounted and run: sudo sh -c 'echo \":WSLInterop:M::MZ::/init:\" > /proc/sys/fs/binfmt_misc/register' && sudo sh -c 'echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop'."
+        Write-Warning "Ensure /proc/sys/fs/binfmt_misc is mounted, then run inside WSL: sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && sudo sh -c 'echo ":WSLInterop:M::MZ::/init:" > /proc/sys/fs/binfmt_misc/register' && sudo sh -c 'echo 1 > /proc/sys/fs/binfmt_misc/WSLInterop'"
     }
 }
 
