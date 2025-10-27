@@ -153,9 +153,9 @@ generate_cosign_key() {
   local pwfile log_file
   pwfile="$(mktemp)"
   log_file="$(mktemp)"
-  printf '\n\n' >"$pwfile"
+  printf '' >"$pwfile"
   hash -r
-  if ! COSIGN_PASSWORD="" cosign generate-key-pair --output-key-prefix "$key_prefix" --password-file "$pwfile" --confirm >"$log_file" 2>&1; then
+  if ! COSIGN_PASSWORD="" cosign generate-key-pair --output-key-prefix "$key_prefix" --password-file "$pwfile" >"$log_file" 2>&1; then
     cat "$log_file" >&2
     rm -f "$pwfile" "$log_file"
     echo "Failed to generate Cosign key pair for ${label}. Ensure the directory is writable or provide an existing key." >&2
