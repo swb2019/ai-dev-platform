@@ -149,15 +149,19 @@ generate_cosign_key() {
   fi
   ensure_cosign_available
   echo "Generating Cosign key pair for ${label} at ${key_prefix}.{key,pub}..." >&2
-  local pwfile
+  ensure_cosign_available
+  local pwfile log_file
   pwfile="$(mktemp)"
-  printf '\n' >"$pwfile"
-  if ! cosign generate-key-pair --output-key-prefix "$key_prefix" --password-file "$pwfile" >/dev/null 2>&1; then
-    rm -f "$pwfile"
+  log_file="$(mktemp)"
+  printf '\n\n' >"$pwfile"
+  hash -r
+  if ! COSIGN_PASSWORD="" cosign generate-key-pair --output-key-prefix "$key_prefix" --password-file "$pwfile" --confirm >"$log_file" 2>&1; then
+    cat "$log_file" >&2
+    rm -f "$pwfile" "$log_file"
     echo "Failed to generate Cosign key pair for ${label}. Ensure the directory is writable or provide an existing key." >&2
     exit 1
   fi
-  rm -f "$pwfile"
+  rm -f "$pwfile" "$log_file"
   if [[ ! -f "$pubkey" ]]; then
     echo "Cosign reported success but ${pubkey} is missing. Provide a valid PEM public key." >&2
     exit 1
