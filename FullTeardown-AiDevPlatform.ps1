@@ -300,6 +300,7 @@ function Ensure-CredentialReadiness {
 
     if (Test-CommandAvailable 'gcloud') {
         $gcloudAccountOk = $false
+        $gcloudLoginSkipped = $false
         try {
             $accounts = (& gcloud auth list --format=value(account) 2>$null)
             $gcloudAccountOk = [bool]$accounts
@@ -313,6 +314,8 @@ function Ensure-CredentialReadiness {
             $launchLogin = $true
             if (-not [string]::IsNullOrWhiteSpace($answer) -and $answer.Trim().ToLowerInvariant() -in @('skip','s')) {
                 $launchLogin = $false
+                $gcloudLoginSkipped = $true
+                $Notes.Add("Skipped gcloud auth login; continuing without refreshing the user credential.")
             }
             if ($launchLogin) {
                 try {
@@ -329,10 +332,15 @@ function Ensure-CredentialReadiness {
             }
         }
         if (-not $gcloudAccountOk) {
-            $Issues.Add("Google Cloud CLI lacks an authenticated user. Run 'gcloud auth login' before rerunning the teardown.")
+            if ($gcloudLoginSkipped) {
+                $Notes.Add("Google Cloud CLI user authentication still missing; ensure Terraform destroy will not require it.")
+            } else {
+                $Issues.Add("Google Cloud CLI lacks an authenticated user. Run 'gcloud auth login' before rerunning the teardown.")
+            }
         }
 
         $adcOk = $false
+        $adcSkipped = $false
         try {
             & gcloud auth application-default print-access-token 2>$null
             $adcOk = ($LASTEXITCODE -eq 0)
@@ -345,6 +353,8 @@ function Ensure-CredentialReadiness {
             $launchAdc = $true
             if (-not [string]::IsNullOrWhiteSpace($answer) -and $answer.Trim().ToLowerInvariant() -in @('skip','s')) {
                 $launchAdc = $false
+                $adcSkipped = $true
+                $Notes.Add("Skipped gcloud application-default login; continuing without refreshing ADC.")
             }
             if ($launchAdc) {
                 try {
@@ -361,7 +371,11 @@ function Ensure-CredentialReadiness {
             }
         }
         if (-not $adcOk) {
-            $Issues.Add("Application Default Credentials are still unavailable. Run 'gcloud auth application-default login' before rerunning the teardown.")
+            if ($adcSkipped) {
+                $Notes.Add("Application Default Credentials remain unset; Terraform destroy may fail if they are required.")
+            } else {
+                $Issues.Add("Application Default Credentials are still unavailable. Run 'gcloud auth application-default login' before rerunning the teardown.")
+            }
         }
     } else {
         $Issues.Add("gcloud CLI not found on PATH; install Google Cloud SDK or provide credentials before rerunning the teardown.")
@@ -369,6 +383,7 @@ function Ensure-CredentialReadiness {
 
     if (Test-CommandAvailable 'gh') {
         $ghOk = $false
+        $ghSkipped = $false
         try {
             & gh auth status --hostname github.com 2>&1 | Out-Null
             $ghOk = ($LASTEXITCODE -eq 0)
@@ -381,6 +396,8 @@ function Ensure-CredentialReadiness {
             $launchGh = $true
             if (-not [string]::IsNullOrWhiteSpace($answer) -and $answer.Trim().ToLowerInvariant() -in @('skip','s')) {
                 $launchGh = $false
+                $ghSkipped = $true
+                $Notes.Add("Skipped GitHub CLI login; continuing without refreshing GitHub credentials.")
             }
             if ($launchGh) {
                 try {
@@ -397,7 +414,11 @@ function Ensure-CredentialReadiness {
             }
         }
         if (-not $ghOk) {
-            $Issues.Add("GitHub CLI authentication required. Run 'gh auth login --hostname github.com' before rerunning the teardown.")
+            if ($ghSkipped) {
+                $Notes.Add("GitHub CLI authentication remains inactive; repository deletion and API calls may fail.")
+            } else {
+                $Issues.Add("GitHub CLI authentication required. Run 'gh auth login --hostname github.com' before rerunning the teardown.")
+            }
         }
     } else {
         $Notes.Add("GitHub CLI not detected; skipping GitHub verification.")
@@ -820,85 +841,90 @@ function Invoke-GitHubForkDeletion {
 
 Assert-Administrator
 
-if (-not $SkipConfirm) {
-    Write-Host "This will remove repository artefacts, tear down cloud resources, and delete the Windows tooling." -ForegroundColor Yellow
-    $response = Read-Host "Continue? [Y/n]"
-    if ($response -and $response.Trim() -notmatch '^(y|yes)$') {
-        Write-Host "Aborted by user."
-        return
+$initialLocation = Get-Location
+$pushedLocation = $false
+
+try {
+    if (-not $SkipConfirm) {
+        Write-Host "This will remove repository artefacts, tear down cloud resources, and delete the Windows tooling." -ForegroundColor Yellow
+        $response = Read-Host "Continue? [Y/n]"
+        if ($response -and $response.Trim() -notmatch '^(y|yes)$') {
+            Write-Host "Aborted by user."
+            return
+        }
     }
-}
 
-$issues = [System.Collections.Generic.List[string]]::new()
-$notes  = [System.Collections.Generic.List[string]]::new()
-$temporaryRoots = [System.Collections.Generic.List[string]]::new()
+    $issues = [System.Collections.Generic.List[string]]::new()
+    $notes  = [System.Collections.Generic.List[string]]::new()
+    $temporaryRoots = [System.Collections.Generic.List[string]]::new()
 
-$repoInfo = Acquire-AiDevRepo -Notes $notes -Issues $issues
-if (-not $repoInfo.Path) {
-    throw "Unable to locate or download the ai-dev-platform checkout. Resolve the issues above and rerun the teardown."
-}
-$repoRoot = $repoInfo.Path
-if ($repoInfo.Temporary) {
-    $temporaryRoots.Add($repoRoot)
-    $notes.Add("Using a temporary archive of ai-dev-platform downloaded to $repoRoot.")
-} else {
-    $notes.Add("Using repository at $repoRoot")
-}
-
-$originSlug   = Get-GitRemoteSlug -RepoPath $repoRoot -Remote "origin"
-$upstreamSlug = Get-GitRemoteSlug -RepoPath $repoRoot -Remote "upstream"
-if ([string]::IsNullOrWhiteSpace($upstreamSlug)) {
-    $upstreamSlug = "swb2019/ai-dev-platform"
-}
-
-$wslStatus = Ensure-WslReady -Notes $notes -Issues $issues
-if (-not $wslStatus.Ready) {
-    if ($wslStatus.PendingReboot) {
-        throw "WSL features were enabled. Reboot Windows, then rerun this script to finish the teardown."
+    $repoInfo = Acquire-AiDevRepo -Notes $notes -Issues $issues
+    if (-not $repoInfo.Path) {
+        throw "Unable to locate or download the ai-dev-platform checkout. Resolve the issues above and rerun the teardown."
     }
-    throw "WSL is unavailable; cannot proceed with the full teardown."
-}
-
-$terraformPath = Ensure-TerraformAvailable -Notes $notes -Issues $issues
-if ($terraformPath) {
-    $terraformDir = Split-Path -Parent $terraformPath
-    if ($env:PATH -notlike "*$terraformDir*") {
-        $env:PATH = "$terraformDir;$env:PATH"
+    $repoRoot = $repoInfo.Path
+    if ($repoInfo.Temporary) {
+        $temporaryRoots.Add($repoRoot)
+        $notes.Add("Using a temporary archive of ai-dev-platform downloaded to $repoRoot.")
+    } else {
+        $notes.Add("Using repository at $repoRoot")
     }
-}
 
-Ensure-CredentialReadiness -Notes $notes -Issues $issues
-Ensure-InfisicalToken      -Notes $notes -Issues $issues
+    $originSlug   = Get-GitRemoteSlug -RepoPath $repoRoot -Remote "origin"
+    $upstreamSlug = Get-GitRemoteSlug -RepoPath $repoRoot -Remote "upstream"
+    if ([string]::IsNullOrWhiteSpace($upstreamSlug)) {
+        $upstreamSlug = "swb2019/ai-dev-platform"
+    }
 
-$summaryCopy = Join-Path $env:ProgramData "ai-dev-platform\uninstall-summary.json"
-$hostScript  = "C:\ProgramData\ai-dev-platform\uninstall-host.ps1"
-$wslSummary  = "/tmp/ai-dev-platform-uninstall-summary.json"
-if (Test-Path -LiteralPath $summaryCopy) { Remove-Item $summaryCopy -Force }
+    $wslStatus = Ensure-WslReady -Notes $notes -Issues $issues
+    if (-not $wslStatus.Ready) {
+        if ($wslStatus.PendingReboot) {
+            throw "WSL features were enabled. Reboot Windows, then rerun this script to finish the teardown."
+        }
+        throw "WSL is unavailable; cannot proceed with the full teardown."
+    }
 
-Stop-KnownProcesses -Issues $issues
+    $terraformPath = Ensure-TerraformAvailable -Notes $notes -Issues $issues
+    if ($terraformPath) {
+        $terraformDir = Split-Path -Parent $terraformPath
+        if ($env:PATH -notlike "*$terraformDir*") {
+            $env:PATH = "$terraformDir;$env:PATH"
+        }
+    }
 
-$repoParent = Split-Path -Parent $repoRoot
-if ($repoParent -and (Test-Path -LiteralPath $repoParent)) {
-    Set-Location $repoParent
-}
+    Ensure-CredentialReadiness -Notes $notes -Issues $issues
+    Ensure-InfisicalToken      -Notes $notes -Issues $issues
 
-$wslPath = Convert-WindowsPathToWsl $repoRoot
-if ([string]::IsNullOrWhiteSpace($wslPath)) {
-    $issues.Add("Unable to translate repository path '$repoRoot' into a WSL mount.")
-} else {
-    $sanitizeScript = @"
+    $summaryCopy = Join-Path $env:ProgramData "ai-dev-platform\uninstall-summary.json"
+    $hostScript  = "C:\ProgramData\ai-dev-platform\uninstall-host.ps1"
+    $wslSummary  = "/tmp/ai-dev-platform-uninstall-summary.json"
+    if (Test-Path -LiteralPath $summaryCopy) { Remove-Item $summaryCopy -Force }
+
+    Stop-KnownProcesses -Issues $issues
+
+    $repoParent = Split-Path -Parent $repoRoot
+    if ($repoParent -and (Test-Path -LiteralPath $repoParent)) {
+        Push-Location $repoParent | Out-Null
+        $pushedLocation = $true
+    }
+
+    $wslPath = Convert-WindowsPathToWsl $repoRoot
+    if ([string]::IsNullOrWhiteSpace($wslPath)) {
+        $issues.Add("Unable to translate repository path '$repoRoot' into a WSL mount.")
+    } else {
+        $sanitizeScript = @"
 set -e
 cd '$wslPath'
 if command -v find >/dev/null 2>&1; then
   find . -type f -name '*.sh' -exec sed -i 's/\r$//' {} +
 fi
 "@
-    $sanitized = Invoke-WslBlock $sanitizeScript
-    if ($sanitized.ExitCode -ne 0 -and $sanitized.Output) {
-        $notes.Add("Shell script normalization reported: $($sanitized.Output -join ' ')")
-    }
+        $sanitized = Invoke-WslBlock $sanitizeScript
+        if ($sanitized.ExitCode -ne 0 -and $sanitized.Output) {
+            $notes.Add("Shell script normalization reported: $($sanitized.Output -join ' ')")
+        }
 
-    $wslScript = @"
+        $wslScript = @"
 set -euo pipefail
 cd '$wslPath'
 rm -f '$wslSummary'
@@ -907,136 +933,145 @@ if [ -f uninstall-terraform-summary.json ]; then
   cp uninstall-terraform-summary.json '$wslSummary'
 fi
 "@
-    $destroyFlag = if ($SkipDestroyCloud) { "--skip-destroy-cloud" } else { "--destroy-cloud" }
-    $wslScript = $wslScript.Replace("{{DESTROY_FLAG}}", $destroyFlag)
+        $destroyFlag = if ($SkipDestroyCloud) { "--skip-destroy-cloud" } else { "--destroy-cloud" }
+        $wslScript = $wslScript.Replace("{{DESTROY_FLAG}}", $destroyFlag)
 
-    Write-Host "Executing teardown inside WSL..." -ForegroundColor Cyan
-    $result = Invoke-WslBlock $wslScript
-    if ($result.Output) {
-        $result.Output | ForEach-Object { Write-Host $_ }
+        Write-Host "Executing teardown inside WSL..." -ForegroundColor Cyan
+        $result = Invoke-WslBlock $wslScript
+        if ($result.Output) {
+            $result.Output | ForEach-Object { Write-Host $_ }
+        }
+        if ($result.ExitCode -ne 0) {
+            $issues.Add("WSL uninstall script exited with code $($result.ExitCode).")
+        } else {
+            Save-TerraformSummary -WslPath $wslSummary -Destination $summaryCopy -Issues $issues
+        }
     }
-    if ($result.ExitCode -ne 0) {
-        $issues.Add("WSL uninstall script exited with code $($result.ExitCode).")
-    } else {
-        Save-TerraformSummary -WslPath $wslSummary -Destination $summaryCopy -Issues $issues
+
+    Invoke-HostCleanupIfPending -ScriptPath $hostScript -Issues $issues
+
+    if (-not $SkipForkDeletion) {
+        Invoke-GitHubForkDeletion -OriginSlug $originSlug -UpstreamSlug $upstreamSlug
     }
-}
 
-Invoke-HostCleanupIfPending -ScriptPath $hostScript -Issues $issues
+    Stop-KnownProcesses -Issues $issues
 
-if (-not $SkipForkDeletion) {
-    Invoke-GitHubForkDeletion -OriginSlug $originSlug -UpstreamSlug $upstreamSlug
-}
+    $pathsToRemove = [System.Collections.Generic.List[string]]::new()
+    foreach ($path in @(
+        $repoRoot,
+        "C:\dev\ai-dev-platform",
+        "$env:UserProfile\ai-dev-platform",
+        "$env:ProgramData\ai-dev-platform",
+        "$env:ProgramData\ai-dev-platform\teardown-cache",
+        "$env:ProgramData\ai-dev-platform\terraform",
+        "$env:LOCALAPPDATA\ai-dev-platform",
+        "$env:LOCALAPPDATA\Programs\Cursor",
+        "$env:LOCALAPPDATA\Cursor",
+        "$env:APPDATA\Cursor",
+        "$env:UserProfile\.cursor",
+        "$env:UserProfile\.codex",
+        "$env:UserProfile\.cache\Cursor",
+        "$env:UserProfile\.cache\ms-playwright",
+        "$env:UserProfile\.cache\ai-dev-platform",
+        "$env:UserProfile\.pnpm-store",
+        "$env:UserProfile\.turbo",
+        "$env:UserProfile\.npm",
+        "$env:UserProfile\AppData\Local\Docker",
+        "$env:UserProfile\AppData\Roaming\Docker",
+        "$env:ProgramData\DockerDesktop",
+        "$env:ProgramData\Docker",
+        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Docker Desktop.lnk",
+        "$env:UserProfile\Desktop\Docker Desktop.lnk",
+        "$env:Public\Desktop\Docker Desktop.lnk"
+    )) {
+        Add-UniquePath -List $pathsToRemove -Path $path
+    }
 
-Stop-KnownProcesses -Issues $issues
+    foreach ($path in $pathsToRemove) {
+        Remove-Tree -Path $path -Issues $issues -Attempts 5
+    }
 
-$pathsToRemove = [System.Collections.Generic.List[string]]::new()
-foreach ($path in @(
-    $repoRoot,
-    "C:\dev\ai-dev-platform",
-    "$env:UserProfile\ai-dev-platform",
-    "$env:ProgramData\ai-dev-platform",
-    "$env:ProgramData\ai-dev-platform\teardown-cache",
-    "$env:ProgramData\ai-dev-platform\terraform",
-    "$env:LOCALAPPDATA\ai-dev-platform",
-    "$env:LOCALAPPDATA\Programs\Cursor",
-    "$env:LOCALAPPDATA\Cursor",
-    "$env:APPDATA\Cursor",
-    "$env:UserProfile\.cursor",
-    "$env:UserProfile\.codex",
-    "$env:UserProfile\.cache\Cursor",
-    "$env:UserProfile\.cache\ms-playwright",
-    "$env:UserProfile\.cache\ai-dev-platform",
-    "$env:UserProfile\.pnpm-store",
-    "$env:UserProfile\.turbo",
-    "$env:UserProfile\.npm",
-    "$env:UserProfile\AppData\Local\Docker",
-    "$env:UserProfile\AppData\Roaming\Docker",
-    "$env:ProgramData\DockerDesktop",
-    "$env:ProgramData\Docker",
-    "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Docker Desktop.lnk",
-    "$env:UserProfile\Desktop\Docker Desktop.lnk",
-    "$env:Public\Desktop\Docker Desktop.lnk"
-)) {
-    Add-UniquePath -List $pathsToRemove -Path $path
-}
+    Clear-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
 
-foreach ($path in $pathsToRemove) {
-    Remove-Tree -Path $path -Issues $issues -Attempts 5
-}
+    foreach ($pkg in @(
+        @{ Id = 'Cursor.Cursor';            Label = 'Cursor' },
+        @{ Id = 'Docker.DockerDesktop';     Label = 'Docker Desktop' },
+        @{ Id = 'Docker.DockerDesktop.App'; Label = 'Docker Desktop App' },
+        @{ Id = 'Docker.DockerDesktopEdge'; Label = 'Docker Desktop Edge' }
+    )) {
+        Ensure-WingetRemoved -PackageId $pkg.Id -Label $pkg.Label -Issues $issues
+    }
 
-Clear-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
-
-foreach ($pkg in @(
-    @{ Id = 'Cursor.Cursor';            Label = 'Cursor' },
-    @{ Id = 'Docker.DockerDesktop';     Label = 'Docker Desktop' },
-    @{ Id = 'Docker.DockerDesktop.App'; Label = 'Docker Desktop App' },
-    @{ Id = 'Docker.DockerDesktopEdge'; Label = 'Docker Desktop Edge' }
-)) {
-    Ensure-WingetRemoved -PackageId $pkg.Id -Label $pkg.Label -Issues $issues
-}
-
-$distroCandidates = [System.Collections.Generic.List[string]]::new()
-foreach ($name in @('ai-dev-platform','Ubuntu-22.04-ai-dev-platform','Ubuntu-20.04-ai-dev-platform','Ubuntu-22.04','Ubuntu-24.04','Ubuntu')) {
-    Add-UniqueString -List $distroCandidates -Value $name
-}
-foreach ($scope in @([EnvironmentVariableTarget]::User,[EnvironmentVariableTarget]::Machine)) {
-    $value = [Environment]::GetEnvironmentVariable('DOCKER_DISTRO_NAME',$scope)
-    Add-UniqueString -List $distroCandidates -Value $value
-}
-foreach ($name in Get-WslDistributions) {
-    if ($name -match 'ai-dev' -or $name -match 'ubuntu') {
+    $distroCandidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in @('ai-dev-platform','Ubuntu-22.04-ai-dev-platform','Ubuntu-20.04-ai-dev-platform','Ubuntu-22.04','Ubuntu-24.04','Ubuntu')) {
         Add-UniqueString -List $distroCandidates -Value $name
     }
-}
-foreach ($name in $distroCandidates) {
-    Ensure-WslDistroRemoved -Name $name -Issues $issues
-}
-
-Stop-KnownProcesses -Issues $issues
-
-Verify-DirectoriesGone      -Paths ($pathsToRemove.ToArray()) -Issues $issues
-Verify-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
-Verify-WingetAbsent         -PackageIds @(
-    @{ Id = 'Cursor.Cursor';            Label = 'Cursor' },
-    @{ Id = 'Docker.DockerDesktop';     Label = 'Docker Desktop' },
-    @{ Id = 'Docker.DockerDesktop.App'; Label = 'Docker Desktop App' },
-    @{ Id = 'Docker.DockerDesktopEdge'; Label = 'Docker Desktop Edge' }
-) -Issues $issues
-Verify-WslDistrosAbsent     -Names ($distroCandidates.ToArray()) -Issues $issues
-
-if (Test-Path -LiteralPath $summaryCopy) {
-    Parse-TerraformSummary -Path $summaryCopy -Issues $issues
-} elseif (-not $SkipDestroyCloud) {
-    $issues.Add("Terraform teardown summary not generated; confirm remote infrastructure manually.")
-}
-
-foreach ($tempRoot in $temporaryRoots) {
-    try {
-        if (Test-Path -LiteralPath $tempRoot) {
-            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction Stop
+    foreach ($scope in @([EnvironmentVariableTarget]::User,[EnvironmentVariableTarget]::Machine)) {
+        $value = [Environment]::GetEnvironmentVariable('DOCKER_DISTRO_NAME',$scope)
+        Add-UniqueString -List $distroCandidates -Value $value
+    }
+    foreach ($name in Get-WslDistributions) {
+        if ($name -match 'ai-dev' -or $name -match 'ubuntu') {
+            Add-UniqueString -List $distroCandidates -Value $name
         }
-    } catch {
-        $notes.Add("Temporary repository copy at '$tempRoot' could not be deleted automatically: $($_.Exception.Message)")
+    }
+    foreach ($name in $distroCandidates) {
+        Ensure-WslDistroRemoved -Name $name -Issues $issues
+    }
+
+    Stop-KnownProcesses -Issues $issues
+
+    Verify-DirectoriesGone      -Paths ($pathsToRemove.ToArray()) -Issues $issues
+    Verify-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
+    Verify-WingetAbsent         -PackageIds @(
+        @{ Id = 'Cursor.Cursor';            Label = 'Cursor' },
+        @{ Id = 'Docker.DockerDesktop';     Label = 'Docker Desktop' },
+        @{ Id = 'Docker.DockerDesktop.App'; Label = 'Docker Desktop App' },
+        @{ Id = 'Docker.DockerDesktopEdge'; Label = 'Docker Desktop Edge' }
+    ) -Issues $issues
+    Verify-WslDistrosAbsent     -Names ($distroCandidates.ToArray()) -Issues $issues
+
+    if (Test-Path -LiteralPath $summaryCopy) {
+        Parse-TerraformSummary -Path $summaryCopy -Issues $issues
+    } elseif (-not $SkipDestroyCloud) {
+        $issues.Add("Terraform teardown summary not generated; confirm remote infrastructure manually.")
+    }
+
+    foreach ($tempRoot in $temporaryRoots) {
+        try {
+            if (Test-Path -LiteralPath $tempRoot) {
+                Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction Stop
+            }
+        } catch {
+            $notes.Add("Temporary repository copy at '$tempRoot' could not be deleted automatically: $($_.Exception.Message)")
+        }
+    }
+
+    if ($notes.Count -gt 0) {
+        Write-Host ""
+        Write-Host "Notes:" -ForegroundColor DarkCyan
+        foreach ($note in $notes) {
+            Write-Host " - $note"
+        }
+    }
+
+    if ($issues.Count -eq 0) {
+        Write-Host ""
+        Write-Host "✅ Full teardown complete and verified. Reboot the machine to finish releasing Windows resources." -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Warning "Cleanup verification found issues:"
+        foreach ($issue in $issues) {
+            Write-Host " - $issue" -ForegroundColor Yellow
+        }
+        throw "Automated reset finished with issues. Resolve the items above."
     }
 }
-
-if ($notes.Count -gt 0) {
-    Write-Host ""
-    Write-Host "Notes:" -ForegroundColor DarkCyan
-    foreach ($note in $notes) {
-        Write-Host " - $note"
+finally {
+    if ($pushedLocation) {
+        try { Pop-Location | Out-Null } catch {}
     }
-}
-
-if ($issues.Count -eq 0) {
-    Write-Host ""
-    Write-Host "✅ Full teardown complete and verified. Reboot the machine to finish releasing Windows resources." -ForegroundColor Green
-} else {
-    Write-Host ""
-    Write-Warning "Cleanup verification found issues:"
-    foreach ($issue in $issues) {
-        Write-Host " - $issue" -ForegroundColor Yellow
+    if ($null -ne $initialLocation) {
+        try { Set-Location -Path $initialLocation.Path } catch {}
     }
-    throw "Automated reset finished with issues. Resolve the items above."
 }
