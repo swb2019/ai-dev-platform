@@ -88,6 +88,10 @@ if (-not $SkipConfirm) {
     }
 }
 
+# convert any CRLF endings in shell scripts to LF before executing
+$sanitizeCommand = "cd '$wslPathEscaped' && find . -type f -name '*.sh' -print0 | xargs -0 -n 1 sed -i 's/\\r$//'"
+& wsl.exe -- bash -lc "$sanitizeCommand" 2>$null | Out-Null
+
 Write-Host "Executing uninstall inside WSL..." -ForegroundColor Cyan
 & wsl.exe -- bash -lc "$fullCommand"
 $exitCode = $LASTEXITCODE
