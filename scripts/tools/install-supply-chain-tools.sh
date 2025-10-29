@@ -86,9 +86,9 @@ install_tar_binary() {
 }
 
 install_raw_binary() {
-  local name="$1" version="$2" url="$3" checksum_url="$4" binary_name="$5"
+  local name="$1" version="$2" url="$3" checksum_url="$4" target_name="$5"
 
-  if already_installed "$binary_name" "$version"; then
+  if already_installed "$target_name" "$version"; then
     echo "$name $version already installed; skipping."
     return 0
   fi
@@ -96,16 +96,27 @@ install_raw_binary() {
   local workdir
   workdir="$(mktemp -d)"
 
-  local binary="$workdir/$binary_name"
-  local checksum_file="$workdir/${binary_name}.sha256"
+  local asset_name="${url##*/}"
+  local checksum_asset="${checksum_url##*/}"
+  local binary="$workdir/$asset_name"
+  local checksum_file="$workdir/$checksum_asset"
 
   curl -fsSL -o "$binary" "$url"
   curl -fsSL -o "$checksum_file" "$checksum_url"
 
-  (cd "$workdir" && sha256sum --check --ignore-missing "$checksum_file")
+  local checksum_entry
+  checksum_entry="$(grep -E "^[0-9a-fA-F]+\s+$asset_name$" "$checksum_file" || true)"
+  if [[ -z "$checksum_entry" ]]; then
+    echo "Checksum entry for $asset_name not found in $checksum_url" >&2
+    exit 1
+  fi
 
-  run_install install -m 0755 "$binary" "$TARGET_BIN_DIR/$binary_name"
-  echo "Installed $name $version to $TARGET_BIN_DIR/$binary_name"
+  printf '%s\n' "$checksum_entry" >"$workdir/selected.checksum"
+  (cd "$workdir" && sha256sum --check selected.checksum)
+
+  chmod +x "$binary"
+  run_install install -m 0755 "$binary" "$TARGET_BIN_DIR/$target_name"
+  echo "Installed $name $version to $TARGET_BIN_DIR/$target_name"
   rm -rf "$workdir"
 }
 
@@ -130,13 +141,8 @@ main() {
 
   install_raw_binary "Cosign" "$COSIGN_VERSION" \
     "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64" \
-    "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64.sha256" \
-    "cosign-linux-amd64"
-
-  # Rename cosign binary to expected name if necessary.
-  if [[ -f "$TARGET_BIN_DIR/cosign-linux-amd64" ]]; then
-    run_install mv "$TARGET_BIN_DIR/cosign-linux-amd64" "$TARGET_BIN_DIR/cosign"
-  fi
+    "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign_checksums.txt" \
+    "cosign"
 }
 
 main "$@"
