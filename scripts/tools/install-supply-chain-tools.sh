@@ -58,14 +58,15 @@ install_tar_binary() {
   local workdir
   workdir="$(mktemp -d)"
 
-  local archive="$workdir/${name}.tar.gz"
+  local archive_name="${url##*/}"
+  local archive="$workdir/${archive_name}"
   local checksums="$workdir/checksums.txt"
 
   curl -fsSL -o "$archive" "$url"
   curl -fsSL -o "$checksums" "$checksum_url"
 
-  if ! grep "$(basename "$archive")" "$checksums" >"$workdir/selected.checksum"; then
-    echo "Checksum for $(basename "$archive") not found in $checksum_url" >&2
+  if ! grep "$archive_name" "$checksums" >"$workdir/selected.checksum"; then
+    echo "Checksum for $archive_name not found in $checksum_url" >&2
     exit 1
   fi
 
