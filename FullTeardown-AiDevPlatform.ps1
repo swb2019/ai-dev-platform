@@ -498,17 +498,12 @@ function Invoke-WslBlock {
         $normalized = ($exports -join "`n") + "`n" + $normalized
     }
 
-    $escapedNormalized = $normalized.Replace('"','""')
-    $cmdExecutable = $env:ComSpec
-    if ([string]::IsNullOrWhiteSpace($cmdExecutable)) {
-        $cmdExecutable = "cmd.exe"
-    }
-    $innerCommand = '""wsl.exe" -- bash -lc "{0}" 2>&1"' -f $escapedNormalized
-
     $previousPreference = $ErrorActionPreference
+    $output = $null
+    $exitCode = 1
     try {
         $ErrorActionPreference = "Continue"
-        $output = & $cmdExecutable "/c" $innerCommand
+        $output = & wsl.exe -- bash -lc $normalized 2>&1
         $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousPreference
