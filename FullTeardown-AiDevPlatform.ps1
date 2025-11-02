@@ -844,7 +844,8 @@ function Verify-DirectoriesGone {
     param(
         [string[]]$Paths,
         [System.Collections.Generic.List[string]]$Issues,
-        [string[]]$SkipPaths = @()
+        [string[]]$SkipPaths = @(),
+        [System.Collections.Generic.List[string]]$Notes = $null
     )
     $skipSet = $null
     if ($SkipPaths -and $SkipPaths.Length -gt 0) {
@@ -864,7 +865,13 @@ function Verify-DirectoriesGone {
         try { $full = [System.IO.Path]::GetFullPath($path) } catch {}
         if ($skipSet -and $skipSet.Contains($full)) { continue }
         if (Test-Path -LiteralPath $full) {
-            $Issues.Add("Residual path detected: $full")
+            if ($skipSet -and $skipSet.Contains($full)) {
+                if ($Notes) {
+                    $Notes.Add("Deferred cleanup still removing '$full'. We'll re-check on next run.")
+                }
+            } else {
+                $Issues.Add("Residual path detected: $full")
+            }
         }
     }
 }
@@ -1255,7 +1262,7 @@ foreach ($name in $distroCandidates) {
 
 Stop-KnownProcesses -Issues $issues
 
-Verify-DirectoriesGone      -Paths ($pathsToRemove.ToArray()) -Issues $issues -SkipPaths ($script:DeferredDirectoryRemovals.ToArray())
+Verify-DirectoriesGone      -Paths ($pathsToRemove.ToArray()) -Issues $issues -SkipPaths ($script:DeferredDirectoryRemovals.ToArray()) -Notes $notes
 Verify-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
 Verify-WingetAbsent         -PackageIds @(
     @{ Id = 'Cursor.Cursor';            Label = 'Cursor' },

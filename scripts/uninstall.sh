@@ -625,7 +625,7 @@ if (Get-Service -Name 'com.docker.service' -ErrorAction SilentlyContinue) {
 }
 
 $registered = (& wsl.exe -l -q 2>$null) -replace "`0","" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-$knownDistros = @('Ubuntu','Ubuntu-22.04','Ubuntu-20.04','Ubuntu-24.04','ai-dev-platform','Ubuntu-22.04-ai-dev-platform')
+$knownDistros = @('Ubuntu-22.04','Ubuntu-20.04','Ubuntu-24.04','ai-dev-platform','Ubuntu-22.04-ai-dev-platform')
 foreach ($distro in $knownDistros) {
     if ($registered -contains $distro) {
         Write-Info "Removing WSL distribution '$distro'..."
