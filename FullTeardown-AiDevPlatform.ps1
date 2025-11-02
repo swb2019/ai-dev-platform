@@ -869,9 +869,9 @@ function Verify-DirectoriesGone {
                 if ($Notes) {
                     $Notes.Add("Deferred cleanup still removing '$full'. We'll re-check on next run.")
                 }
-            } else {
-                $Issues.Add("Residual path detected: $full")
+                continue
             }
+            $Issues.Add("Residual path detected: $full")
         }
     }
 }
