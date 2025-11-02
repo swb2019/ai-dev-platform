@@ -863,9 +863,9 @@ function Verify-DirectoriesGone {
         if ([string]::IsNullOrWhiteSpace($path)) { continue }
         $full = $path
         try { $full = [System.IO.Path]::GetFullPath($path) } catch {}
-        if ($skipSet -and $skipSet.Contains($full)) { continue }
+        $isDeferred = ($skipSet -and $skipSet.Contains($full))
         if (Test-Path -LiteralPath $full) {
-            if ($skipSet -and $skipSet.Contains($full)) {
+            if ($isDeferred) {
                 if ($Notes) {
                     $Notes.Add("Deferred cleanup still removing '$full'. We'll re-check on next run.")
                 }
