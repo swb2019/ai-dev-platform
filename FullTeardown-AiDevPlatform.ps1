@@ -37,6 +37,7 @@ $ProgressPreference = "SilentlyContinue"
 
 $script:TeardownScriptPath = $null
 $script:TeardownScriptRoot = $null
+$script:DefaultWslDistribution = $null
 try {
     if (Test-Path variable:PSCommandPath) {
         $psCommandPathVar = Get-Variable -Name PSCommandPath -ErrorAction Stop
@@ -155,6 +156,47 @@ function Get-WslDistributions {
     } catch {
         return @()
     }
+}
+
+function Resolve-WslDistribution {
+    param(
+        [System.Collections.Generic.List[string]]$Notes = $null,
+        [System.Collections.Generic.List[string]]$Issues = $null
+    )
+    if (-not (Test-CommandAvailable 'wsl.exe')) { return "" }
+    try {
+        $raw = & wsl.exe -l -q 2>$null
+    } catch {
+        if ($Issues) { $Issues.Add("Unable to enumerate WSL distributions: $($_.Exception.Message)") }
+        return ""
+    }
+    if (-not $raw) { return "" }
+
+    $candidates = @()
+    foreach ($line in $raw) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $clean = ($line -replace "`0","")
+        $isDefault = $clean.TrimStart().StartsWith('*')
+        $name = $clean.Trim().TrimStart('*').Trim()
+        if (-not [string]::IsNullOrWhiteSpace($name)) {
+            $candidates += [pscustomobject]@{
+                Name      = $name
+                IsDefault = $isDefault
+            }
+        }
+    }
+    if (-not $candidates) { return "" }
+
+    $preferred = $candidates | Where-Object { $_.Name -notmatch '^docker-desktop' -and $_.Name -notmatch '^wslg$' }
+    if (-not $preferred) { $preferred = $candidates }
+
+    $selection = $preferred | Where-Object { $_.IsDefault } | Select-Object -First 1
+    if (-not $selection) { $selection = $preferred | Select-Object -First 1 }
+
+    if ($selection -and $Notes) {
+        $Notes.Add("Using WSL distribution '$($selection.Name)' for teardown commands.")
+    }
+    return $selection.Name
 }
 
 function Ensure-WslReady {
@@ -487,8 +529,17 @@ function Ensure-InfisicalToken {
 function Invoke-WslBlock {
     param(
         [string]$Script,
-        [hashtable]$Environment = $null
+        [hashtable]$Environment = $null,
+        [string]$Distribution = $null
     )
+    if (-not (Test-CommandAvailable 'wsl.exe')) {
+        return @{
+            ExitCode = 1
+            Output   = @("wsl.exe not available on PATH.")
+            StdOut   = @()
+            StdErr   = @("wsl.exe not available on PATH.")
+        }
+    }
     $normalized = ($Script -replace "`r","").Trim()
     if ($Environment -and $Environment.Count -gt 0) {
         $exports = foreach ($item in $Environment.GetEnumerator()) {
@@ -498,12 +549,22 @@ function Invoke-WslBlock {
         $normalized = ($exports -join "`n") + "`n" + $normalized
     }
 
+    if (-not $Distribution) {
+        $Distribution = $script:DefaultWslDistribution
+    }
+
+    $args = @()
+    if (-not [string]::IsNullOrWhiteSpace($Distribution)) {
+        $args += @('-d', $Distribution)
+    }
+    $args += @('--', 'bash', '-lc', $normalized)
+
     $previousPreference = $ErrorActionPreference
     $output = $null
     $exitCode = 1
     try {
         $ErrorActionPreference = "Continue"
-        $output = & wsl.exe -- bash -lc $normalized 2>&1
+        $output = & wsl.exe @args 2>&1
         $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousPreference
@@ -946,6 +1007,8 @@ if (-not $wslStatus.Ready) {
     }
     throw "WSL is unavailable; cannot proceed with the full teardown."
 }
+
+$script:DefaultWslDistribution = Resolve-WslDistribution -Notes $notes -Issues $issues
 
 $terraformPath = Ensure-TerraformAvailable -Notes $notes -Issues $issues
 if ($terraformPath) {
