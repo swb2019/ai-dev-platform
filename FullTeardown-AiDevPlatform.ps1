@@ -668,17 +668,22 @@ function Remove-Tree {
         [System.Collections.Generic.List[string]]$Notes = $null
     )
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
-    if (-not (Test-Path -LiteralPath $Path)) { return }
+    try {
+        $target = [System.IO.Path]::GetFullPath($Path)
+    } catch {
+        $target = $Path
+    }
+    if (-not (Test-Path -LiteralPath $target)) { return }
     for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
         try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
             break
         } catch {
             if ($attempt -eq $Attempts) {
                 if ($Notes) {
-                    $Notes.Add("Deferred deletion for '$Path': $($_.Exception.Message)")
+                    $Notes.Add("Deferred deletion for '$target': $($_.Exception.Message)")
                 } else {
-                    $Issues.Add("Failed to delete '$Path': $($_.Exception.Message)")
+                    $Issues.Add("Failed to delete '$target': $($_.Exception.Message)")
                 }
                 break
             }
@@ -686,11 +691,11 @@ function Remove-Tree {
             Start-Sleep -Seconds 2
         }
     }
-    if (Test-Path -LiteralPath $Path) {
-        if ($DeferredList -and -not ($DeferredList | Where-Object { $_ -eq $Path })) {
-            $DeferredList.Add($Path)
+    if (Test-Path -LiteralPath $target) {
+        if ($DeferredList -and -not ($DeferredList | Where-Object { $_ -eq $target })) {
+            $DeferredList.Add($target)
         }
-        $escaped = $Path.Replace('"','""')
+        $escaped = $target.Replace('"','""')
         $cmd = "timeout /t 5 /nobreak >nul & rmdir /s /q `"$escaped`""
         try {
             Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd -WindowStyle Hidden -ErrorAction Stop | Out-Null
@@ -702,7 +707,8 @@ function Ensure-WingetRemoved {
     param(
         [string]$PackageId,
         [string]$Label,
-        [System.Collections.Generic.List[string]]$Issues
+        [System.Collections.Generic.List[string]]$Issues,
+        [System.Collections.Generic.List[string]]$Notes = $null
     )
     if ([string]::IsNullOrWhiteSpace($Label)) { return }
     $stillPresent = $false
@@ -721,7 +727,11 @@ function Ensure-WingetRemoved {
             }
         } catch {
             $stillPresent = $true
-            $Issues.Add("winget failed to remove ${Label}: $($_.Exception.Message)")
+            if ($Notes) {
+                $Notes.Add("winget failed to remove ${Label}: $($_.Exception.Message)")
+            } else {
+                $Issues.Add("winget failed to remove ${Label}: $($_.Exception.Message)")
+            }
         }
     } else {
         $stillPresent = $true
@@ -734,12 +744,20 @@ function Ensure-WingetRemoved {
                 $stillPresent = $false
             }
         } catch {
-            $Issues.Add("Fallback uninstall for $Label failed: $($_.Exception.Message)")
+            if ($Notes) {
+                $Notes.Add("Fallback uninstall for $Label failed: $($_.Exception.Message)")
+            } else {
+                $Issues.Add("Fallback uninstall for $Label failed: $($_.Exception.Message)")
+            }
             $stillPresent = $true
         }
     }
     if ($stillPresent) {
-        $Issues.Add("$Label may still be installed. Remove it via Apps & Features if present.")
+        if ($Notes) {
+            $Notes.Add("$Label may still be installed. Remove it via Apps & Features if present.")
+        } else {
+            $Issues.Add("$Label may still be installed. Remove it via Apps & Features if present.")
+        }
     }
 }
 
@@ -828,11 +846,25 @@ function Verify-DirectoriesGone {
         [System.Collections.Generic.List[string]]$Issues,
         [string[]]$SkipPaths = @()
     )
+    $skipSet = $null
+    if ($SkipPaths -and $SkipPaths.Length -gt 0) {
+        $skipSet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($skip in $SkipPaths) {
+            if ([string]::IsNullOrWhiteSpace($skip)) { continue }
+            try {
+                $skipSet.Add([System.IO.Path]::GetFullPath($skip)) | Out-Null
+            } catch {
+                $skipSet.Add($skip) | Out-Null
+            }
+        }
+    }
     foreach ($path in $Paths) {
         if ([string]::IsNullOrWhiteSpace($path)) { continue }
-        if ($SkipPaths -and ($SkipPaths -contains $path)) { continue }
-        if (Test-Path -LiteralPath $path) {
-            $Issues.Add("Residual path detected: $path")
+        $full = $path
+        try { $full = [System.IO.Path]::GetFullPath($path) } catch {}
+        if ($skipSet -and $skipSet.Contains($full)) { continue }
+        if (Test-Path -LiteralPath $full) {
+            $Issues.Add("Residual path detected: $full")
         }
     }
 }
@@ -1201,7 +1233,7 @@ foreach ($pkg in @(
     @{ Id = 'Docker.DockerDesktop.App'; Label = 'Docker Desktop App' },
     @{ Id = 'Docker.DockerDesktopEdge'; Label = 'Docker Desktop Edge' }
 )) {
-    Ensure-WingetRemoved -PackageId $pkg.Id -Label $pkg.Label -Issues $issues
+    Ensure-WingetRemoved -PackageId $pkg.Id -Label $pkg.Label -Issues $issues -Notes $notes
 }
 
 $distroCandidates = [System.Collections.Generic.List[string]]::new()
