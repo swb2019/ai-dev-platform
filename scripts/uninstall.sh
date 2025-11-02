@@ -644,7 +644,7 @@ function Remove-Tree {
             Remove-Item -Path $Path -Recurse -Force -ErrorAction Stop
             Write-Ok "Deleted $Path"
         } catch {
-            Write-Warn "Failed to delete $Path: $($_.Exception.Message)"
+            Write-Warn "Failed to delete ${Path}: $($_.Exception.Message)"
         }
     }
 }
