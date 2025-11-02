@@ -106,32 +106,45 @@ Before you start, make sure you can provide the following:
    $repoPath = Join-Path $workspace 'ai-dev-platform'
    New-Item -ItemType Directory -Force -Path $workspace | Out-Null
    Set-Location $workspace
-
-   if (Test-Path $repoPath) {
-     if (Test-Path (Join-Path $repoPath '.git')) {
-       Set-Location $repoPath
-       git fetch origin
-       git checkout main
-       git pull --ff-only origin main
-     } else {
-       Write-Warning "Removing non-repository directory at $repoPath to allow a clean clone."
-       Remove-Item -LiteralPath $repoPath -Recurse -Force
-       git clone https://github.com/swb2019/ai-dev-platform.git
-       Set-Location $repoPath
-     }
-   } else {
-     git clone https://github.com/swb2019/ai-dev-platform.git
-     Set-Location $repoPath
-   }
    ```
+
+if (Test-Path $repoPath) {
+  if (Test-Path (Join-Path $repoPath '.git')) {
+    Set-Location $repoPath
+    git fetch origin
+    git checkout main
+    git pull --ff-only origin main
+  } else {
+    Write-Warning "Removing non-repository directory at $repoPath to allow a clean clone."
+    try {
+      Remove-Item -LiteralPath $repoPath -Recurse -Force -ErrorAction Stop
+    } catch {
+      $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+      $tempName = "ai-dev-platform.stale-$timestamp"
+$tempPath = Join-Path $workspace $tempName
+      Rename-Item -LiteralPath $repoPath -NewName $tempName -ErrorAction Stop
+      Start-Process -FilePath powershell.exe -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-Command',
+        "Start-Sleep -Seconds 2; Remove-Item -LiteralPath '$tempPath' -Recurse -Force -ErrorAction SilentlyContinue"
+) -WindowStyle Hidden | Out-Null
+}
+git clone https://github.com/swb2019/ai-dev-platform.git
+Set-Location $repoPath
+}
+} else {
+git clone https://github.com/swb2019/ai-dev-platform.git
+Set-Location $repoPath
+}
+
+````
 
 3. **(Optional) Sync your sandbox fork with upstream**
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\sync-sandbox.ps1
-   ```
+```powershell
+powershell -ExecutionPolicy Bypass -File .\sync-sandbox.ps1
+````
 
-   This script authenticates the GitHub CLI if necessary, ensures your fork exists, mirrors the latest upstream commits, and sets the correct remotes.
+This script authenticates the GitHub CLI if necessary, ensures your fork exists, mirrors the latest upstream commits, and sets the correct remotes.
 
 4. **Run the automated bootstrap (elevated PowerShell):**
 
