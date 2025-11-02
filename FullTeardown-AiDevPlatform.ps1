@@ -187,16 +187,64 @@ function Resolve-WslDistribution {
     }
     if (-not $candidates) { return "" }
 
-    $preferred = $candidates | Where-Object { $_.Name -notmatch '^docker-desktop' -and $_.Name -notmatch '^wslg$' }
+    $preferred = $candidates | Where-Object {
+        $lower = $_.Name.ToLowerInvariant()
+        return ($lower -notlike 'docker-desktop*') -and $lower -ne 'wslg'
+    }
     if (-not $preferred) { $preferred = $candidates }
 
     $selection = $preferred | Where-Object { $_.IsDefault } | Select-Object -First 1
     if (-not $selection) { $selection = $preferred | Select-Object -First 1 }
 
-    if ($selection -and $Notes) {
-        $Notes.Add("Using WSL distribution '$($selection.Name)' for teardown commands.")
+    if ($selection) {
+        if ($Notes -and ($selection.Name.ToLowerInvariant() -notlike 'docker-desktop*') -and $selection.Name.ToLowerInvariant() -ne 'wslg') {
+            $Notes.Add("Using WSL distribution '$($selection.Name)' for teardown commands.")
+        }
+        return $selection.Name
     }
-    return $selection.Name
+    return ""
+}
+
+function Ensure-WslDistributionPresent {
+    param(
+        [System.Collections.Generic.List[string]]$Notes,
+        [System.Collections.Generic.List[string]]$Issues
+    )
+    $result = [ordered]@{ Name = ""; PendingReboot = $false }
+    if (-not (Test-CommandAvailable 'wsl.exe')) { return $result }
+
+    $name = Resolve-WslDistribution -Notes $Notes -Issues $Issues
+    if (-not [string]::IsNullOrWhiteSpace($name) -and ($name.ToLowerInvariant() -notlike 'docker-desktop*')) {
+        $result.Name = $name
+        return $result
+    }
+
+    if ($Notes) {
+        $Notes.Add("No Linux WSL distribution detected; installing Ubuntu automatically.")
+    }
+    try {
+        $installOutput = & wsl.exe --install -d Ubuntu --no-launch 2>&1
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -eq 3010 -or ($installOutput -match 'restart' -or $installOutput -match 'Reboot')) {
+            $result.PendingReboot = $true
+        } elseif ($exitCode -ne 0) {
+            if ($Issues) {
+                $Issues.Add("Failed to install Ubuntu WSL distribution (exit $exitCode). Output: $($installOutput -join ' ')")
+            }
+            return $result
+        }
+    } catch {
+        if ($Issues) {
+            $Issues.Add("Unable to install Ubuntu WSL distribution: $($_.Exception.Message)")
+        }
+        return $result
+    }
+
+    $name = Resolve-WslDistribution -Notes $Notes -Issues $Issues
+    if (-not [string]::IsNullOrWhiteSpace($name) -and ($name.ToLowerInvariant() -notlike 'docker-desktop*')) {
+        $result.Name = $name
+    }
+    return $result
 }
 
 function Ensure-WslReady {
@@ -1008,7 +1056,14 @@ if (-not $wslStatus.Ready) {
     throw "WSL is unavailable; cannot proceed with the full teardown."
 }
 
-$script:DefaultWslDistribution = Resolve-WslDistribution -Notes $notes -Issues $issues
+$distroStatus = Ensure-WslDistributionPresent -Notes $notes -Issues $issues
+if ($distroStatus.PendingReboot) {
+    throw "Ubuntu WSL distribution was installed. Reboot Windows, then rerun the teardown."
+}
+if ([string]::IsNullOrWhiteSpace($distroStatus.Name)) {
+    throw "No suitable WSL distribution is available. Install Ubuntu by running 'wsl --install -d Ubuntu' and rerun the teardown."
+}
+$script:DefaultWslDistribution = $distroStatus.Name
 
 $terraformPath = Ensure-TerraformAvailable -Notes $notes -Issues $issues
 if ($terraformPath) {
