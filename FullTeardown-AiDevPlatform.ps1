@@ -879,7 +879,8 @@ function Verify-DirectoriesGone {
 function Verify-WingetAbsent {
     param(
         [System.Collections.Hashtable[]]$PackageIds,
-        [System.Collections.Generic.List[string]]$Issues
+        [System.Collections.Generic.List[string]]$Issues,
+        [System.Collections.Generic.List[string]]$Notes = $null
     )
     $wingetAvailable = Test-CommandAvailable 'winget'
     foreach ($entry in $PackageIds) {
@@ -890,21 +891,37 @@ function Verify-WingetAbsent {
             try {
                 $listing = winget list --id $id 2>$null
                 if ($listing -and $listing -match [Regex]::Escape($id)) {
-                    $Issues.Add("$label still appears in winget package list.")
+                    if ($Notes) {
+                        $Notes.Add("$label still appears in winget package list; remove it manually if desired.")
+                    } else {
+                        $Issues.Add("$label still appears in winget package list.")
+                    }
                     continue
                 }
             } catch {
-                $Issues.Add("winget verification for $label failed: $($_.Exception.Message)")
+                if ($Notes) {
+                    $Notes.Add("winget verification for $label failed: $($_.Exception.Message)")
+                } else {
+                    $Issues.Add("winget verification for $label failed: $($_.Exception.Message)")
+                }
                 continue
             }
         }
         try {
             $package = Get-Package -ProviderName Programs -Name $label -ErrorAction SilentlyContinue
             if ($package) {
-                $Issues.Add("$label still appears in Apps & Features.")
+                if ($Notes) {
+                    $Notes.Add("$label still appears in Apps & Features; uninstall from Settings if needed.")
+                } else {
+                    $Issues.Add("$label still appears in Apps & Features.")
+                }
             }
         } catch {
-            $Issues.Add("Unable to verify Apps & Features entry for ${label}: $($_.Exception.Message)")
+            if ($Notes) {
+                $Notes.Add("Unable to verify Apps & Features entry for ${label}: $($_.Exception.Message)")
+            } else {
+                $Issues.Add("Unable to verify Apps & Features entry for ${label}: $($_.Exception.Message)")
+            }
         }
     }
 }
@@ -1244,7 +1261,7 @@ foreach ($pkg in @(
 }
 
 $distroCandidates = [System.Collections.Generic.List[string]]::new()
-foreach ($name in @('ai-dev-platform','Ubuntu-22.04-ai-dev-platform','Ubuntu-20.04-ai-dev-platform','Ubuntu-22.04','Ubuntu-24.04','Ubuntu')) {
+foreach ($name in @('ai-dev-platform','Ubuntu-22.04-ai-dev-platform','Ubuntu-20.04-ai-dev-platform','Ubuntu-22.04','Ubuntu-24.04')) {
     Add-UniqueString -List $distroCandidates -Value $name
 }
 foreach ($scope in @([EnvironmentVariableTarget]::User,[EnvironmentVariableTarget]::Machine)) {
@@ -1252,7 +1269,7 @@ foreach ($scope in @([EnvironmentVariableTarget]::User,[EnvironmentVariableTarge
     Add-UniqueString -List $distroCandidates -Value $value
 }
 foreach ($name in Get-WslDistributions) {
-    if ($name -match 'ai-dev' -or $name -match 'ubuntu') {
+    if ($name -match 'ai-dev' -or ($name -match 'ubuntu' -and $name -notmatch '^ubuntu$')) {
         Add-UniqueString -List $distroCandidates -Value $name
     }
 }
@@ -1269,7 +1286,7 @@ Verify-WingetAbsent         -PackageIds @(
     @{ Id = 'Docker.DockerDesktop';     Label = 'Docker Desktop' },
     @{ Id = 'Docker.DockerDesktop.App'; Label = 'Docker Desktop App' },
     @{ Id = 'Docker.DockerDesktopEdge'; Label = 'Docker Desktop Edge' }
-) -Issues $issues
+) -Issues $issues -Notes $notes
 Verify-WslDistrosAbsent     -Names ($distroCandidates.ToArray()) -Issues $issues
 
 if (Test-Path -LiteralPath $summaryCopy) {
