@@ -322,7 +322,7 @@ function Ensure-CredentialReadiness {
         $gcloudAccountOk = $false
         $gcloudLoginSkipped = $false
         try {
-            $accounts = (& gcloud auth list --format=value(account) 2>$null)
+            $accounts = (& gcloud auth list "--format=value(account)" 2>$null)
             $gcloudAccountOk = [bool]$accounts
         } catch {
             $Issues.Add("Unable to query gcloud accounts: $($_.Exception.Message)")
@@ -344,7 +344,7 @@ function Ensure-CredentialReadiness {
                     $Issues.Add("gcloud auth login failed: $($_.Exception.Message)")
                 }
                 try {
-                    $accounts = (& gcloud auth list --format=value(account) 2>$null)
+                    $accounts = (& gcloud auth list "--format=value(account)" 2>$null)
                     $gcloudAccountOk = [bool]$accounts
                 } catch {
                     $gcloudAccountOk = $false
