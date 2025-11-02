@@ -664,7 +664,8 @@ function Remove-Tree {
         [string]$Path,
         [System.Collections.Generic.List[string]]$Issues,
         [int]$Attempts = 5,
-        [System.Collections.Generic.List[string]]$DeferredList = $null
+        [System.Collections.Generic.List[string]]$DeferredList = $null,
+        [System.Collections.Generic.List[string]]$Notes = $null
     )
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -674,7 +675,11 @@ function Remove-Tree {
             break
         } catch {
             if ($attempt -eq $Attempts) {
-                $Issues.Add("Failed to delete '$Path': $($_.Exception.Message)")
+                if ($Notes) {
+                    $Notes.Add("Deferred deletion for '$Path': $($_.Exception.Message)")
+                } else {
+                    $Issues.Add("Failed to delete '$Path': $($_.Exception.Message)")
+                }
                 break
             }
             Stop-KnownProcesses -Issues $Issues
@@ -762,27 +767,27 @@ function Ensure-WslDistroRemoved {
 function Invoke-HostCleanupIfPending {
     param(
         [string]$ScriptPath,
-        [System.Collections.Generic.List[string]]$Issues
+        [System.Collections.Generic.List[string]]$Issues,
+        [System.Collections.Generic.List[string]]$Notes
     )
     if ([string]::IsNullOrWhiteSpace($ScriptPath)) { return }
     if (-not (Test-Path -LiteralPath $ScriptPath)) { return }
     Write-Host "Ensuring Windows host cleanup helper runs..." -ForegroundColor Cyan
+    $exitCode = 0
     try {
-        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-File",$ScriptPath -WindowStyle Hidden -PassThru -ErrorAction Stop
-        if ($proc) {
-            $proc.WaitForExit(300000) | Out-Null
-            if ($proc.ExitCode -ne 0) {
-                $Issues.Add("Host cleanup script exited with code $($proc.ExitCode).")
-            }
-        }
+        & $ScriptPath -Elevated
+        if ($LASTEXITCODE) { $exitCode = $LASTEXITCODE }
     } catch {
         $Issues.Add("Unable to launch host cleanup script ($ScriptPath): $($_.Exception.Message)")
+        return
     }
     if (Test-Path -LiteralPath $ScriptPath) {
         try { Remove-Item -LiteralPath $ScriptPath -Force } catch {}
     }
     if (Test-Path -LiteralPath $ScriptPath) {
         $Issues.Add("Host cleanup script still present at $ScriptPath. Run it manually as administrator.")
+    } elseif ($exitCode -ne 0 -and $Notes) {
+        $Notes.Add("Host cleanup script exited with code $exitCode after cleanup. Components may already be removed.")
     }
 }
 
@@ -1089,7 +1094,7 @@ if ($terraformPath) {
 Ensure-CredentialReadiness -Notes $notes -Issues $issues
 Ensure-InfisicalToken      -Notes $notes -Issues $issues
 
-$summaryCopy = Join-Path $env:ProgramData "ai-dev-platform\uninstall-summary.json"
+$summaryCopy = Join-Path ([System.IO.Path]::GetTempPath()) "ai-dev-platform-uninstall-summary.json"
 $hostScript  = "C:\ProgramData\ai-dev-platform\uninstall-host.ps1"
 $wslSummary  = "/tmp/ai-dev-platform-uninstall-summary.json"
 if (Test-Path -LiteralPath $summaryCopy) { Remove-Item $summaryCopy -Force }
@@ -1139,10 +1144,13 @@ fi
         $issues.Add("WSL uninstall script exited with code $($result.ExitCode).")
     } else {
         Save-TerraformSummary -WslPath $wslSummary -Destination $summaryCopy -Issues $issues
+        if ((Test-Path -LiteralPath $summaryCopy) -and $notes) {
+            $notes.Add("Terraform teardown summary saved to $summaryCopy.")
+        }
     }
 }
 
-Invoke-HostCleanupIfPending -ScriptPath $hostScript -Issues $issues
+Invoke-HostCleanupIfPending -ScriptPath $hostScript -Issues $issues -Notes $notes
 
 if (-not $SkipForkDeletion) {
     Invoke-GitHubForkDeletion -OriginSlug $originSlug -UpstreamSlug $upstreamSlug
@@ -1182,7 +1190,7 @@ foreach ($path in @(
 }
 
 foreach ($path in $pathsToRemove) {
-    Remove-Tree -Path $path -Issues $issues -Attempts 5 -DeferredList $script:DeferredDirectoryRemovals
+    Remove-Tree -Path $path -Issues $issues -Attempts 5 -DeferredList $script:DeferredDirectoryRemovals -Notes $notes
 }
 
 Clear-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
