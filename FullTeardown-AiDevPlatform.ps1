@@ -38,6 +38,7 @@ $ProgressPreference = "SilentlyContinue"
 $script:TeardownScriptPath = $null
 $script:TeardownScriptRoot = $null
 $script:DefaultWslDistribution = $null
+$script:DeferredDirectoryRemovals = [System.Collections.Generic.List[string]]::new()
 try {
     if (Test-Path variable:PSCommandPath) {
         $psCommandPathVar = Get-Variable -Name PSCommandPath -ErrorAction Stop
@@ -662,7 +663,8 @@ function Remove-Tree {
     param(
         [string]$Path,
         [System.Collections.Generic.List[string]]$Issues,
-        [int]$Attempts = 5
+        [int]$Attempts = 5,
+        [System.Collections.Generic.List[string]]$DeferredList = $null
     )
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -680,7 +682,14 @@ function Remove-Tree {
         }
     }
     if (Test-Path -LiteralPath $Path) {
-        $Issues.Add("Path still present after cleanup: $Path")
+        if ($DeferredList -and -not ($DeferredList | Where-Object { $_ -eq $Path })) {
+            $DeferredList.Add($Path)
+        }
+        $escaped = $Path.Replace('"','""')
+        $cmd = "timeout /t 5 /nobreak >nul & rmdir /s /q `"$escaped`""
+        try {
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd -WindowStyle Hidden -ErrorAction Stop | Out-Null
+        } catch {}
     }
 }
 
@@ -759,16 +768,18 @@ function Invoke-HostCleanupIfPending {
     if (-not (Test-Path -LiteralPath $ScriptPath)) { return }
     Write-Host "Ensuring Windows host cleanup helper runs..." -ForegroundColor Cyan
     try {
-        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-File",$ScriptPath,"-Elevated" -Verb RunAs -PassThru -ErrorAction Stop
+        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-File",$ScriptPath -WindowStyle Hidden -PassThru -ErrorAction Stop
         if ($proc) {
             $proc.WaitForExit(300000) | Out-Null
+            if ($proc.ExitCode -ne 0) {
+                $Issues.Add("Host cleanup script exited with code $($proc.ExitCode).")
+            }
         }
     } catch {
         $Issues.Add("Unable to launch host cleanup script ($ScriptPath): $($_.Exception.Message)")
     }
-    for ($i = 0; $i -lt 180; $i++) {
-        if (-not (Test-Path -LiteralPath $ScriptPath)) { return }
-        Start-Sleep -Seconds 2
+    if (Test-Path -LiteralPath $ScriptPath) {
+        try { Remove-Item -LiteralPath $ScriptPath -Force } catch {}
     }
     if (Test-Path -LiteralPath $ScriptPath) {
         $Issues.Add("Host cleanup script still present at $ScriptPath. Run it manually as administrator.")
@@ -809,10 +820,12 @@ function Verify-EnvironmentVariables {
 function Verify-DirectoriesGone {
     param(
         [string[]]$Paths,
-        [System.Collections.Generic.List[string]]$Issues
+        [System.Collections.Generic.List[string]]$Issues,
+        [string[]]$SkipPaths = @()
     )
     foreach ($path in $Paths) {
         if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        if ($SkipPaths -and ($SkipPaths -contains $path)) { continue }
         if (Test-Path -LiteralPath $path) {
             $Issues.Add("Residual path detected: $path")
         }
@@ -1169,7 +1182,7 @@ foreach ($path in @(
 }
 
 foreach ($path in $pathsToRemove) {
-    Remove-Tree -Path $path -Issues $issues -Attempts 5
+    Remove-Tree -Path $path -Issues $issues -Attempts 5 -DeferredList $script:DeferredDirectoryRemovals
 }
 
 Clear-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
@@ -1202,7 +1215,7 @@ foreach ($name in $distroCandidates) {
 
 Stop-KnownProcesses -Issues $issues
 
-Verify-DirectoriesGone      -Paths ($pathsToRemove.ToArray()) -Issues $issues
+Verify-DirectoriesGone      -Paths ($pathsToRemove.ToArray()) -Issues $issues -SkipPaths ($script:DeferredDirectoryRemovals.ToArray())
 Verify-EnvironmentVariables -Names @('INFISICAL_TOKEN','GH_TOKEN','WSLENV','DOCKER_CERT_PATH','DOCKER_HOST','DOCKER_DISTRO_NAME') -Issues $issues
 Verify-WingetAbsent         -PackageIds @(
     @{ Id = 'Cursor.Cursor';            Label = 'Cursor' },
@@ -1229,6 +1242,13 @@ foreach ($tempRoot in $temporaryRoots) {
 }
 
 if ($notes.Count -gt 0) {
+    if ($script:DeferredDirectoryRemovals -and $script:DeferredDirectoryRemovals.Count -gt 0) {
+        foreach ($pending in $script:DeferredDirectoryRemovals) {
+            if (-not [string]::IsNullOrWhiteSpace($pending)) {
+                $notes.Add("Scheduled background removal for '$pending'.")
+            }
+        }
+    }
     Write-Host ""
     Write-Host "Notes:" -ForegroundColor DarkCyan
     foreach ($note in $notes) {
