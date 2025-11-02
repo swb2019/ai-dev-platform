@@ -107,13 +107,18 @@ Before you start, make sure you can provide the following:
    New-Item -ItemType Directory -Force -Path $workspace | Out-Null
    Set-Location $workspace
 
-   if (Test-Path (Join-Path $repoPath '.git')) {
-     Set-Location $repoPath
-     git fetch origin
-     git checkout main
-     git pull --ff-only origin main
-   } elseif (Test-Path $repoPath) {
-     throw "Path $repoPath already exists but is not a Git repository. Move or remove it, then rerun this block."
+   if (Test-Path $repoPath) {
+     if (Test-Path (Join-Path $repoPath '.git')) {
+       Set-Location $repoPath
+       git fetch origin
+       git checkout main
+       git pull --ff-only origin main
+     } else {
+       Write-Warning "Removing non-repository directory at $repoPath to allow a clean clone."
+       Remove-Item -LiteralPath $repoPath -Recurse -Force
+       git clone https://github.com/swb2019/ai-dev-platform.git
+       Set-Location $repoPath
+     }
    } else {
      git clone https://github.com/swb2019/ai-dev-platform.git
      Set-Location $repoPath
