@@ -106,42 +106,64 @@ Before you start, make sure you can provide the following:
    $repoPath = Join-Path $workspace 'ai-dev-platform'
    New-Item -ItemType Directory -Force -Path $workspace | Out-Null
    Set-Location $workspace
+
+   if (Test-Path $repoPath) {
+     if (Test-Path (Join-Path $repoPath '.git')) {
+       Set-Location $repoPath
+       git fetch origin
+       git checkout main
+       git pull --ff-only origin main
+     } else {
+       Write-Warning "Removing non-repository directory at $repoPath to allow a clean clone."
+       $removalSucceeded = $false
+       try {
+         Remove-Item -LiteralPath $repoPath -Recurse -Force -ErrorAction Stop
+         $removalSucceeded = $true
+       } catch {
+         $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+         $tempName = "ai-dev-platform.stale-$timestamp"
+         $tempPath = Join-Path $workspace $tempName
+         try {
+           Rename-Item -LiteralPath $repoPath -NewName $tempName -ErrorAction Stop
+           Start-Process -FilePath powershell.exe -ArgumentList @(
+             '-NoProfile','-ExecutionPolicy','Bypass','-Command',
+             "Start-Sleep -Seconds 2; Remove-Item -LiteralPath '$tempPath' -Recurse -Force -ErrorAction SilentlyContinue"
+           ) -WindowStyle Hidden | Out-Null
+           Start-Sleep -Seconds 2
+         } catch {
+           Start-Process -FilePath cmd.exe -ArgumentList '/c', "rmdir /s /q `"$repoPath`"" -WindowStyle Hidden | Out-Null
+           Start-Sleep -Seconds 2
+         }
+         if (-not (Test-Path $repoPath)) {
+           $removalSucceeded = $true
+         } else {
+           try {
+             Remove-Item -LiteralPath $repoPath -Recurse -Force -ErrorAction Stop
+             $removalSucceeded = -not (Test-Path $repoPath)
+           } catch {}
+         }
+       }
+       if ($removalSucceeded) {
+         git clone https://github.com/swb2019/ai-dev-platform.git
+         Set-Location $repoPath
+       } else {
+         Write-Warning "$repoPath is still in use. Close any applications using this folder and rerun the commands."
+         Set-Location $repoPath
+         return
+       }
+     }
+   } else {
+     git clone https://github.com/swb2019/ai-dev-platform.git
+     Set-Location $repoPath
+   }
+
    ```
-
-if (Test-Path $repoPath) {
-  if (Test-Path (Join-Path $repoPath '.git')) {
-    Set-Location $repoPath
-    git fetch origin
-    git checkout main
-    git pull --ff-only origin main
-  } else {
-    Write-Warning "Removing non-repository directory at $repoPath to allow a clean clone."
-    try {
-      Remove-Item -LiteralPath $repoPath -Recurse -Force -ErrorAction Stop
-    } catch {
-      $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
-      $tempName = "ai-dev-platform.stale-$timestamp"
-$tempPath = Join-Path $workspace $tempName
-      Rename-Item -LiteralPath $repoPath -NewName $tempName -ErrorAction Stop
-      Start-Process -FilePath powershell.exe -ArgumentList @(
-        '-NoProfile','-ExecutionPolicy','Bypass','-Command',
-        "Start-Sleep -Seconds 2; Remove-Item -LiteralPath '$tempPath' -Recurse -Force -ErrorAction SilentlyContinue"
-) -WindowStyle Hidden | Out-Null
-}
-git clone https://github.com/swb2019/ai-dev-platform.git
-Set-Location $repoPath
-}
-} else {
-git clone https://github.com/swb2019/ai-dev-platform.git
-Set-Location $repoPath
-}
-
-````
 
 ### Optional: Sync your sandbox fork with upstream
 
 ```powershell
 # Optional: sync your sandbox fork with upstream
+Set-Location C:\dev\ai-dev-platform
 powershell -ExecutionPolicy Bypass -File .\sync-sandbox.ps1
 ```
 
@@ -155,6 +177,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1
 ```
 
 What the helper does:
+
 - Enables WSL2 features, installs/initializes Ubuntu, and sets it as default.
 - Installs **Cursor** via winget (and, if winget cannot install it, fetches and caches the newest signed Windows installer from Cursor's GitHub releases—honoring proxy env vars—or respects `-CursorInstallerPath` / `CURSOR_INSTALLER_PATH` overrides).
 - Installs/updates Docker Desktop, enables WSL integration, and waits for the daemon.
@@ -170,6 +193,7 @@ What the helper does:
 You can supply overrides such as `-RepoSlug your-user/ai-dev-platform`, `-Branch feature`, `-WslUserName devuser`, `-DockerInstallerPath C:\Installers\DockerDesktopInstaller.exe`, or `-CursorInstallerPath C:\Installers\CursorSetup.exe`. The Cursor override accepts a single installer, a directory that contains `CursorSetup*.exe`, or a pre-downloaded `.zip` archive. When prompted for optional tokens (`GH_TOKEN`, `INFISICAL_TOKEN`), press <kbd>Enter</kbd> to skip unless you have a PAT/Infisical secret ready. Re-running the helper is safe; it resumes from checkpoints stored under `~/.cache/ai-dev-platform/setup-state`.
 
 ### Sign into Cursor assistants (one time)
+
 - Launch Cursor from the Start menu (installed to `%LOCALAPPDATA%\Programs\Cursor\Cursor.exe`) after closing the elevated bootstrap PowerShell window so it runs with normal user privileges.
 - Sign into GitHub when prompted.
 - Press `Ctrl+Shift+P` → “Codex: Sign In” and complete the browser flow (requires accepting the GitHub OAuth prompt).
@@ -181,15 +205,18 @@ You can supply overrides such as `-RepoSlug your-user/ai-dev-platform`, `-Branch
   ```
 
 ### Verify the WSL workspace
+
 ```bash
 cd ~/ai-dev-platform
 pnpm --filter @ai-dev-platform/web dev
 ```
+
 The setup wrapper already ran lint, type-check, and Jest/Playwright smoke tests. Rerun `./scripts/setup-all.sh` anytime; add `RESET_SETUP_STATE=1 ./scripts/setup-all.sh` to force every step.
 
 > **Heads-up:** If the bootstrap reports “Repository hardening still requires manual completion,” follow the instructions in `~/ai-dev-platform/tmp/github-hardening.pending` (usually finishing `gh auth login`) and rerun `./scripts/github-hardening.sh`.
 
 ### If you skipped the guided cloud setup, run the following inside WSL to configure deployments
+
 ```bash
 gcloud auth login
 gcloud auth application-default login
@@ -197,6 +224,7 @@ gcloud auth application-default login
 ./scripts/configure-github-env.sh staging
 ./scripts/configure-github-env.sh prod
 ```
+
 When prompted, supply your GCP project ID, region, Terraform state bucket name, and confirm the GitHub environments to update. Set `INFISICAL_TOKEN` before running `configure-github-env.sh` if you rely on Infisical-managed secrets (optional for OSS usage).
 
 ### macOS & Linux quick start
@@ -401,4 +429,7 @@ The script auto-detects (or downloads) the repository (honouring `$env:AI_DEV_PL
 When the script prints the ✅ success message, reboot the machine to ensure Docker Desktop, WSL, and associated services release remaining handles. If it reports issues, address them and rerun before provisioning the environment again.
 
 When the script prints the ✅ success message, reboot the machine to make sure Docker Desktop, WSL, and associated services release their handles. If it reports issues, address them and rerun before provisioning the environment again.
-````
+
+```
+
+```
