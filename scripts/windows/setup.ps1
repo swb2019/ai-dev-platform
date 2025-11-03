@@ -2616,12 +2616,12 @@ chmod +x /tmp/open-in-windows.sh
 function Get-WslEnvPrefix {
     $lines = @()
     if ($env:GH_TOKEN) {
-        $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:GH_TOKEN))
-        $lines += "export GH_TOKEN=\$(printf '%s' '$encoded' | base64 -d)"
+        $escaped = $env:GH_TOKEN.Replace("'", "'\\''")
+        $lines += "export GH_TOKEN='$escaped'"
     }
     if ($env:INFISICAL_TOKEN) {
-        $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:INFISICAL_TOKEN))
-        $lines += "export INFISICAL_TOKEN=\$(printf '%s' '$encoded' | base64 -d)"
+        $escapedInf = $env:INFISICAL_TOKEN.Replace("'", "'\\''")
+        $lines += "export INFISICAL_TOKEN='$escapedInf'"
     }
     if ($lines.Count -eq 0) {
         return ""
