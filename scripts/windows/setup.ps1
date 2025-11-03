@@ -2262,7 +2262,9 @@ function Ensure-DockerDesktop {
     }
 
     if (-not $settings) { $settings = [pscustomobject]@{} }
+    $null = Ensure-JsonProperty -Parent $settings -Name "wslEngineEnabled" -Default $true
     $settings.wslEngineEnabled = $true
+    $null = Ensure-JsonProperty -Parent $settings -Name "autoStart" -Default $true
     $settings.autoStart = $true
     $resources = Ensure-JsonProperty -Parent $settings -Name "resources" -Default ([pscustomobject]@{})
     $wslIntegration = Ensure-JsonProperty -Parent $resources -Name "wslIntegration" -Default ([pscustomobject]@{})
