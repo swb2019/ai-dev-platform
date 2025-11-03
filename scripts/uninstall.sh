@@ -480,7 +480,9 @@ remove_empty_dir() {
 
 cleanup_npm_global() {
   local npm_dir="$HOME/.npm-global"
-  [[ -d "$npm_dir" ]] || return
+  if [[ ! -d "$npm_dir" ]]; then
+    return 0
+  fi
   local -a entries=(
     "$npm_dir/bin/codex"
     "$npm_dir/bin/claude"
@@ -516,12 +518,13 @@ remove_generated_ssh_keys() {
     remove_target "home-extra" "$priv" || true
     remove_empty_dir "home-extra" "$ssh_dir" || true
   fi
+  return 0
 }
 
 cleanup_additional_home_artifacts() {
   (( HOME_ENABLED )) || return
-  cleanup_npm_global
-  remove_generated_ssh_keys
+  cleanup_npm_global || true
+  remove_generated_ssh_keys || true
 }
 
 declare -a summaries=()
