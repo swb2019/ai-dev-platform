@@ -310,6 +310,20 @@ function Ensure-CursorCertificateTrusted {
             $null = Import-Certificate -FilePath $tempPath -CertStoreLocation $entry.Store -ErrorAction Stop
             Write-CursorLog ("Trusted Cursor signer certificate {0} in {1}." -f $thumb, $entry.Label)
             try { Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue } catch {}
+            try {
+                $atpArgs = @(
+                    "Add-ProcessMitigation",
+                    "-ProgramName",
+                    ([IO.Path]::GetFileName($installer)),
+                    "-Enable",
+                    "NonAdmin"
+                )
+                Write-CursorLog ("ProcessMitigation command: {0}" -f ($atpArgs -join " "))
+                $mitigation = Start-Process -FilePath "powershell.exe" -ArgumentList $atpArgs -Wait -NoNewWindow -PassThru -ErrorAction Stop
+                Write-CursorLog ("ProcessMitigation exit code: {0}" -f $mitigation.ExitCode)
+            } catch {
+                Write-CursorLog ("Failed to adjust process mitigation: {0}" -f $_.Exception.Message)
+            }
         } catch {
             Write-CursorLog ("Failed to trust Cursor signer {0} in {1}: {2}" -f $thumb, $entry.Label, $_.Exception.Message)
         }
@@ -2248,7 +2262,9 @@ function Ensure-DockerDesktop {
     }
 
     if (-not $settings) { $settings = [pscustomobject]@{} }
+    $null = Ensure-JsonProperty -Parent $settings -Name "wslEngineEnabled" -Default $true
     $settings.wslEngineEnabled = $true
+    $null = Ensure-JsonProperty -Parent $settings -Name "autoStart" -Default $true
     $settings.autoStart = $true
     $resources = Ensure-JsonProperty -Parent $settings -Name "resources" -Default ([pscustomobject]@{})
     $wslIntegration = Ensure-JsonProperty -Parent $resources -Name "wslIntegration" -Default ([pscustomobject]@{})
