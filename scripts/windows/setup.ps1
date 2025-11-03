@@ -2340,13 +2340,14 @@ function Ensure-DockerDesktop {
     $dockerCli = Join-Path $env:ProgramFiles "Docker\Docker\DockerCli.exe"
     if (Test-Path $dockerCli) {
         try {
+            Write-Host "Ensuring Docker Desktop is using Linux engine..."
             & $dockerCli -SwitchLinuxEngine | Out-Null
         } catch {}
         try {
-            & $dockerCli -EnableFeatures | Out-Null
-        } catch {}
-        try {
-            & $dockerCli -ApplyWSLIntegration -d $DistroName | Out-Null
+            Write-Host "Restarting Docker Desktop with WSL integration..."
+            & $dockerCli -Shutdown | Out-Null
+            Start-Sleep -Seconds 3
+            Start-Process -FilePath $dockerExe | Out-Null
         } catch {}
     }
 
