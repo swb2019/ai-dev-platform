@@ -433,6 +433,10 @@ function Invoke-CursorInstaller {
         [string]$ExpectedVersion,
         [string]$ExpectedPath
     )
+    if (-not (Test-Path $InstallerPath)) {
+        Write-Warning "Cursor installer path '$InstallerPath' not found."
+        return $false
+    }
     Write-CursorLog ("Invoking Cursor installer at {0}" -f $InstallerPath)
     Clear-FileZoneMarker -Path $InstallerPath -LogLabel "Cursor installer"
     try {
@@ -462,7 +466,7 @@ function Invoke-CursorInstaller {
     }
     Write-Host "Running Cursor installer ($InstallerPath) in silent mode..."
     try {
-        $proc = Start-Process -FilePath $InstallerPath -ArgumentList $arguments -Wait -PassThru
+        $proc = Start-Process -FilePath $InstallerPath -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
         if ($proc.ExitCode -ne 0) {
             Write-CursorLog ("Cursor installer exit code {0}" -f $proc.ExitCode)
             Write-Warning "Cursor installer exited with code $($proc.ExitCode)."
