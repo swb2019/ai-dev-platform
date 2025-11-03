@@ -280,6 +280,42 @@ function Test-CursorInstallerSignature {
     return $false
 }
 
+function Ensure-CursorCertificateTrusted {
+    param([System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate)
+    if (-not $Certificate) { return }
+    $thumb = $Certificate.Thumbprint
+    if ([string]::IsNullOrWhiteSpace($thumb)) { return }
+    $locations = @(
+        @{ Store = "Cert:\LocalMachine\TrustedPublisher"; Label = "LocalMachine\\TrustedPublisher" },
+        @{ Store = "Cert:\CurrentUser\TrustedPublisher"; Label = "CurrentUser\\TrustedPublisher" }
+    )
+    foreach ($entry in $locations) {
+        try {
+            $existing = Get-ChildItem -Path $entry.Store -ErrorAction Stop | Where-Object { $_.Thumbprint -eq $thumb }
+            if ($existing) {
+                Write-CursorLog ("Cursor signer {0} already trusted in {1}." -f $thumb, $entry.Label)
+                continue
+            }
+        } catch {
+            Write-CursorLog ("Unable to enumerate certificate store {0}: {1}" -f $entry.Label, $_.Exception.Message)
+        }
+        try {
+            $tempPath = Join-Path ([System.IO.Path]::GetTempPath()) ("cursor-signer-" + $thumb + ".cer")
+            try {
+                [System.IO.File]::WriteAllBytes($tempPath, $Certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+            } catch {
+                Write-CursorLog ("Failed to export Cursor signer {0}: {1}" -f $thumb, $_.Exception.Message)
+                continue
+            }
+            $null = Import-Certificate -FilePath $tempPath -CertStoreLocation $entry.Store -ErrorAction Stop
+            Write-CursorLog ("Trusted Cursor signer certificate {0} in {1}." -f $thumb, $entry.Label)
+            try { Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue } catch {}
+        } catch {
+            Write-CursorLog ("Failed to trust Cursor signer {0} in {1}: {2}" -f $thumb, $entry.Label, $_.Exception.Message)
+        }
+    }
+}
+
 function Get-CursorInstalledVersion {
     param([string]$Path)
     try {
@@ -448,6 +484,14 @@ function Install-CursorFromPath {
     try {
         if (-not (Test-CursorInstallerSignature -Path $installer)) {
             return $false
+        }
+        try {
+            $sig = Get-AuthenticodeSignature -FilePath $installer -ErrorAction Stop
+            if ($sig -and $sig.SignerCertificate) {
+                Ensure-CursorCertificateTrusted -Certificate $sig.SignerCertificate
+            }
+        } catch {
+            Write-CursorLog ("Unable to trust Cursor signer certificate for {0}: {1}" -f $installer, $_.Exception.Message)
         }
         try {
             $hash = Get-FileHash -Path $installer -Algorithm SHA256
