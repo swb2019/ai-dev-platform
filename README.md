@@ -138,64 +138,66 @@ Set-Location $repoPath
 
 ````
 
-3. **(Optional) Sync your sandbox fork with upstream**
+### Optional: Sync your sandbox fork with upstream
 
 ```powershell
+# Optional: sync your sandbox fork with upstream
 powershell -ExecutionPolicy Bypass -File .\sync-sandbox.ps1
-````
+```
 
 This script authenticates the GitHub CLI if necessary, ensures your fork exists, mirrors the latest upstream commits, and sets the correct remotes.
 
-4. **Run the automated bootstrap (elevated PowerShell):**
+### Run the automated bootstrap (elevated PowerShell)
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1
-   ```
+```powershell
+# Run the automated bootstrap (requires elevation)
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1
+```
 
-   What the helper does:
-   - Enables WSL2 features, installs/initializes Ubuntu, and sets it as default.
-   - Installs **Cursor** via winget (and, if winget cannot install it, fetches and caches the newest signed Windows installer from Cursor's GitHub releases—honoring proxy env vars—or respects `-CursorInstallerPath` / `CURSOR_INSTALLER_PATH` overrides).
-   - Installs/updates Docker Desktop, enables WSL integration, and waits for the daemon.
-   - Clones the repository inside WSL and executes `./scripts/setup-all.sh`.
-   - Launches `gh auth login --web` inside both Windows and WSL contexts (if needed), refreshes the token scopes (`repo`, `workflow`, `admin:org`), and verifies the signed-in user has admin rights on the repository. The helper relays the OAuth URL to your Windows browser automatically; if it does not open, copy the printed URL manually and paste it into your browser.
-   - Automatically creates the GitHub repository (via `gh repo create`) if it does not yet exist or is empty, then continues.
-   - Offers to configure Google Cloud (interactive `gcloud auth login`, `gcloud auth application-default login`, and `./scripts/bootstrap-infra.sh`) and to update GitHub environments automatically. Browser windows open on Windows; if the browser is blocked, copy the displayed URL manually. When the script reaches the Infisical step it first asks for an existing `INFISICAL_TOKEN` and only generates one (with a cost warning) if you explicitly opt in.
-   - When Terraform runs, the helper auto-approves the plan (`AUTO_APPROVE=1`, `TF_IN_AUTOMATION=1`), so no manual `yes` confirmation is required.
-   - Terraform applies are retried automatically (default three attempts, configurable via `TERRAFORM_MAX_RETRIES`) to ride out transient network hiccups.
-   - Ensures the Cursor Codex and Claude Code extensions are installed, falling back to cached VSIX packages if the marketplace or CLI is unavailable.
-   - Reminds you to launch Cursor from a standard (non-admin) session at the end so you can sign into Codex and Claude Code without inheriting elevated privileges.
+What the helper does:
+- Enables WSL2 features, installs/initializes Ubuntu, and sets it as default.
+- Installs **Cursor** via winget (and, if winget cannot install it, fetches and caches the newest signed Windows installer from Cursor's GitHub releases—honoring proxy env vars—or respects `-CursorInstallerPath` / `CURSOR_INSTALLER_PATH` overrides).
+- Installs/updates Docker Desktop, enables WSL integration, and waits for the daemon.
+- Clones the repository inside WSL and executes `./scripts/setup-all.sh`.
+- Launches `gh auth login --web` inside both Windows and WSL contexts (if needed), refreshes the token scopes (`repo`, `workflow`, `admin:org`), and verifies the signed-in user has admin rights on the repository. The helper relays the OAuth URL to your Windows browser automatically; if it does not open, copy the printed URL manually and paste it into your browser.
+- Automatically creates the GitHub repository (via `gh repo create`) if it does not yet exist or is empty, then continues.
+- Offers to configure Google Cloud (interactive `gcloud auth login`, `gcloud auth application-default login`, and `./scripts/bootstrap-infra.sh`) and to update GitHub environments automatically. Browser windows open on Windows; if the browser is blocked, copy the displayed URL manually. When the script reaches the Infisical step it first asks for an existing `INFISICAL_TOKEN` and only generates one (with a cost warning) if you explicitly opt in.
+- When Terraform runs, the helper auto-approves the plan (`AUTO_APPROVE=1`, `TF_IN_AUTOMATION=1`), so no manual `yes` confirmation is required.
+- Terraform applies are retried automatically (default three attempts, configurable via `TERRAFORM_MAX_RETRIES`) to ride out transient network hiccups.
+- Ensures the Cursor Codex and Claude Code extensions are installed, falling back to cached VSIX packages if the marketplace or CLI is unavailable.
+- Reminds you to launch Cursor from a standard (non-admin) session at the end so you can sign into Codex and Claude Code without inheriting elevated privileges.
 
-   You can supply overrides such as `-RepoSlug your-user/ai-dev-platform`, `-Branch feature`, `-WslUserName devuser`, `-DockerInstallerPath C:\Installers\DockerDesktopInstaller.exe`, or `-CursorInstallerPath C:\Installers\CursorSetup.exe`. The Cursor override accepts a single installer, a directory that contains `CursorSetup*.exe`, or a pre-downloaded `.zip` archive. When prompted for optional tokens (`GH_TOKEN`, `INFISICAL_TOKEN`), press <kbd>Enter</kbd> to skip unless you have a PAT/Infisical secret ready. Re-running the helper is safe; it resumes from checkpoints stored under `~/.cache/ai-dev-platform/setup-state`.
+You can supply overrides such as `-RepoSlug your-user/ai-dev-platform`, `-Branch feature`, `-WslUserName devuser`, `-DockerInstallerPath C:\Installers\DockerDesktopInstaller.exe`, or `-CursorInstallerPath C:\Installers\CursorSetup.exe`. The Cursor override accepts a single installer, a directory that contains `CursorSetup*.exe`, or a pre-downloaded `.zip` archive. When prompted for optional tokens (`GH_TOKEN`, `INFISICAL_TOKEN`), press <kbd>Enter</kbd> to skip unless you have a PAT/Infisical secret ready. Re-running the helper is safe; it resumes from checkpoints stored under `~/.cache/ai-dev-platform/setup-state`.
 
-5. **Sign into Cursor assistants (one time):**
-   - Launch Cursor from the Start menu (installed to `%LOCALAPPDATA%\Programs\Cursor\Cursor.exe`) after closing the elevated bootstrap PowerShell window so it runs with normal user privileges.
-   - Sign into GitHub when prompted.
-   - Press `Ctrl+Shift+P` → “Codex: Sign In” and complete the browser flow (requires accepting the GitHub OAuth prompt).
-   - Repeat for “Claude Code: Sign In” (Claude Code also needs GitHub OAuth approval).
-   - The bootstrap attempts to pre-install the Codex and Claude Code extensions via the Cursor CLI. If either extension is missing, open a regular PowerShell window and run:
-     ```powershell
-     & "$env:LOCALAPPDATA\Programs\Cursor\resources\app\bin\cursor.cmd" --install-extension openai.chatgpt --force
-     & "$env:LOCALAPPDATA\Programs\Cursor\resources\app\bin\cursor.cmd" --install-extension anthropic.claude-code --force
-     ```
+### Sign into Cursor assistants (one time)
+- Launch Cursor from the Start menu (installed to `%LOCALAPPDATA%\Programs\Cursor\Cursor.exe`) after closing the elevated bootstrap PowerShell window so it runs with normal user privileges.
+- Sign into GitHub when prompted.
+- Press `Ctrl+Shift+P` → “Codex: Sign In” and complete the browser flow (requires accepting the GitHub OAuth prompt).
+- Repeat for “Claude Code: Sign In” (Claude Code also needs GitHub OAuth approval).
+- The bootstrap attempts to pre-install the Codex and Claude Code extensions via the Cursor CLI. If either extension is missing, open a regular PowerShell window and run:
+  ```powershell
+  & "$env:LOCALAPPDATA\Programs\Cursor\resources\app\bin\cursor.cmd" --install-extension openai.chatgpt --force
+  & "$env:LOCALAPPDATA\Programs\Cursor\resources\app\bin\cursor.cmd" --install-extension anthropic.claude-code --force
+  ```
 
-6. **Verify the WSL workspace:**
-   ```bash
-   cd ~/ai-dev-platform
-   pnpm --filter @ai-dev-platform/web dev
-   ```
-   The setup wrapper already ran lint, type-check, and Jest/Playwright smoke tests. Rerun `./scripts/setup-all.sh` anytime; add `RESET_SETUP_STATE=1 ./scripts/setup-all.sh` to force every step.
+### Verify the WSL workspace
+```bash
+cd ~/ai-dev-platform
+pnpm --filter @ai-dev-platform/web dev
+```
+The setup wrapper already ran lint, type-check, and Jest/Playwright smoke tests. Rerun `./scripts/setup-all.sh` anytime; add `RESET_SETUP_STATE=1 ./scripts/setup-all.sh` to force every step.
 
 > **Heads-up:** If the bootstrap reports “Repository hardening still requires manual completion,” follow the instructions in `~/ai-dev-platform/tmp/github-hardening.pending` (usually finishing `gh auth login`) and rerun `./scripts/github-hardening.sh`.
 
-7. **If you skipped the guided cloud setup, run the following inside WSL to configure deployments:**
-   ```bash
-   gcloud auth login
-   gcloud auth application-default login
-   ./scripts/bootstrap-infra.sh
-   ./scripts/configure-github-env.sh staging
-   ./scripts/configure-github-env.sh prod
-   ```
-   When prompted, supply your GCP project ID, region, Terraform state bucket name, and confirm the GitHub environments to update. Set `INFISICAL_TOKEN` before running `configure-github-env.sh` if you rely on Infisical-managed secrets (optional for OSS usage).
+### If you skipped the guided cloud setup, run the following inside WSL to configure deployments
+```bash
+gcloud auth login
+gcloud auth application-default login
+./scripts/bootstrap-infra.sh
+./scripts/configure-github-env.sh staging
+./scripts/configure-github-env.sh prod
+```
+When prompted, supply your GCP project ID, region, Terraform state bucket name, and confirm the GitHub environments to update. Set `INFISICAL_TOKEN` before running `configure-github-env.sh` if you rely on Infisical-managed secrets (optional for OSS usage).
 
 ### macOS & Linux quick start
 
@@ -399,3 +401,4 @@ The script auto-detects (or downloads) the repository (honouring `$env:AI_DEV_PL
 When the script prints the ✅ success message, reboot the machine to ensure Docker Desktop, WSL, and associated services release remaining handles. If it reports issues, address them and rerun before provisioning the environment again.
 
 When the script prints the ✅ success message, reboot the machine to make sure Docker Desktop, WSL, and associated services release their handles. If it reports issues, address them and rerun before provisioning the environment again.
+````
