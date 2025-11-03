@@ -372,6 +372,25 @@ function Wait-ForCursorInstallation {
     return $false
 }
 
+function Clear-FileZoneMarker {
+    param([string]$Path,[string]$LogLabel = "file")
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return
+    }
+    if (-not (Test-Path $Path)) {
+        return
+    }
+    try {
+        $stream = Get-Item -LiteralPath $Path -Stream "Zone.Identifier" -ErrorAction SilentlyContinue
+        if ($null -ne $stream) {
+            Unblock-File -LiteralPath $Path -ErrorAction Stop
+            Write-CursorLog ("Removed download marker from {0} ({1})." -f $Path, $LogLabel)
+        }
+    } catch {
+        Write-CursorLog ("Failed to clear download marker from {0}: {1}" -f $Path, $_.Exception.Message)
+    }
+}
+
 function Invoke-CursorInstaller {
     param(
         [string]$InstallerPath,
@@ -379,6 +398,7 @@ function Invoke-CursorInstaller {
         [string]$ExpectedPath
     )
     Write-CursorLog ("Invoking Cursor installer at {0}" -f $InstallerPath)
+    Clear-FileZoneMarker -Path $InstallerPath -LogLabel "Cursor installer"
     $arguments = @("/S")
     if (Test-IsAdministrator) {
         Write-Host "Launching Cursor installer without elevation so the editor remains non-admin."
