@@ -493,7 +493,7 @@ cleanup_npm_global() {
   )
   local path
   for path in "${entries[@]}"; do
-    remove_target "home-extra" "$path"
+    remove_target "home-extra" "$path" || true
   done
   local -a prune_dirs=(
     "$npm_dir/lib/node_modules"
@@ -502,7 +502,7 @@ cleanup_npm_global() {
     "$npm_dir"
   )
   for path in "${prune_dirs[@]}"; do
-    remove_empty_dir "home-extra" "$path"
+    remove_empty_dir "home-extra" "$path" || true
   done
 }
 
@@ -512,9 +512,9 @@ remove_generated_ssh_keys() {
   local pub="$priv.pub"
   local marker="ai-dev-platform@local"
   if [[ -f "$pub" ]] && grep -q "$marker" "$pub" >/dev/null 2>&1; then
-    remove_target "home-extra" "$pub"
-    remove_target "home-extra" "$priv"
-    remove_empty_dir "home-extra" "$ssh_dir"
+    remove_target "home-extra" "$pub" || true
+    remove_target "home-extra" "$priv" || true
+    remove_empty_dir "home-extra" "$ssh_dir" || true
   fi
 }
 
