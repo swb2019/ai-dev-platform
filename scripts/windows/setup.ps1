@@ -333,6 +333,45 @@ function Confirm-CursorInstallation {
     return $false
 }
 
+function Start-ProcessNonElevated {
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList,
+        [string]$WorkingDirectory
+    )
+    $shell = New-Object -ComObject Shell.Application
+    if (-not $shell) {
+        throw "Shell.Application COM object unavailable."
+    }
+    $arguments = if ($ArgumentList -and $ArgumentList.Count -gt 0) { $ArgumentList -join " " } else { "" }
+    if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+        try {
+            $WorkingDirectory = Split-Path -Path $FilePath -Parent
+        } catch {
+            $WorkingDirectory = $null
+        }
+    }
+    $shell.ShellExecute($FilePath, $arguments, $WorkingDirectory, "open", 1)
+}
+
+function Wait-ForCursorInstallation {
+    param(
+        [string]$ExpectedPath,
+        [int]$TimeoutSeconds = 900
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ($ExpectedPath -and (Test-Path $ExpectedPath)) {
+            return $true
+        }
+        if (Get-CursorInstallPath) {
+            return $true
+        }
+        Start-Sleep -Seconds 5
+    }
+    return $false
+}
+
 function Invoke-CursorInstaller {
     param(
         [string]$InstallerPath,
@@ -340,17 +379,34 @@ function Invoke-CursorInstaller {
         [string]$ExpectedPath
     )
     Write-CursorLog ("Invoking Cursor installer at {0}" -f $InstallerPath)
+    $arguments = @("/S")
+    if (Test-IsAdministrator) {
+        Write-Host "Launching Cursor installer without elevation so the editor remains non-admin."
+        Write-Host "If an installer window appears, finish it in your normal user session before continuing."
+        Write-CursorLog "Attempting non-elevated Cursor installer launch."
+        try {
+            Start-ProcessNonElevated -FilePath $InstallerPath -ArgumentList $arguments -WorkingDirectory (Split-Path -Path $InstallerPath -Parent)
+            if (-not (Wait-ForCursorInstallation -ExpectedPath $ExpectedPath)) {
+                Write-Warning "Cursor installer launched non-elevated. Complete any visible prompts in the standard user session and rerun this step if necessary."
+                Write-CursorLog "Non-elevated Cursor installer launch could not be confirmed automatically within the timeout window."
+            }
+            return Confirm-CursorInstallation -ExpectedVersion $ExpectedVersion -ExpectedPath $ExpectedPath
+        } catch {
+            Write-CursorLog ("Non-elevated Cursor installer launch failed: {0}" -f $_.Exception.Message)
+            Write-Warning "Unable to launch Cursor installer in a non-elevated context automatically ($($_.Exception.Message)). Falling back to elevated execution."
+        }
+    }
     Write-Host "Running Cursor installer ($InstallerPath) in silent mode..."
     try {
-        $proc = Start-Process -FilePath $InstallerPath -ArgumentList @("/S") -Wait -PassThru
+        $proc = Start-Process -FilePath $InstallerPath -ArgumentList $arguments -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-CursorLog ("Cursor installer exit code {0}" -f $proc.ExitCode)
+            Write-Warning "Cursor installer exited with code $($proc.ExitCode)."
+        }
     } catch {
         Write-CursorLog ("Cursor installer execution failed: {0}" -f $_.Exception.Message)
         Write-Warning "Cursor installer execution failed ($($_.Exception.Message))."
         return $false
-    }
-    if ($proc.ExitCode -ne 0) {
-        Write-CursorLog ("Cursor installer exit code {0}" -f $proc.ExitCode)
-        Write-Warning "Cursor installer exited with code $($proc.ExitCode)."
     }
     return Confirm-CursorInstallation -ExpectedVersion $ExpectedVersion -ExpectedPath $ExpectedPath
 }
