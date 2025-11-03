@@ -460,11 +460,13 @@ function Wait-ForProcessExitByPath {
     $escaped = $fullPath.Replace("\", "\\")
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
+        $processes = @()
         try {
-            $processes = Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'"
+            $processes = @(Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'")
         } catch {
             $processes = @()
         }
+        $processes = $processes | Where-Object { $_ }
         if (-not $processes -or $processes.Count -eq 0) {
             return $true
         }
@@ -2325,6 +2327,7 @@ function Ensure-DockerDesktop {
         $enabledDistros += $DistroName
     }
     $wslIntegration.enabledDistros = $enabledDistros
+    $null = Ensure-JsonProperty -Parent $wslIntegration -Name "defaultDistro" -Default $DistroName
     $wslIntegration.defaultDistro = $DistroName
     $settings.wslEngineEnabled = $true
     ($settings | ConvertTo-Json -Depth 10) | Set-Content -Path $settingsPath -Encoding UTF8
