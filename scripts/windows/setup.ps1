@@ -435,6 +435,14 @@ function Invoke-CursorInstaller {
     )
     Write-CursorLog ("Invoking Cursor installer at {0}" -f $InstallerPath)
     Clear-FileZoneMarker -Path $InstallerPath -LogLabel "Cursor installer"
+    try {
+        $sig = Get-AuthenticodeSignature -FilePath $InstallerPath -ErrorAction Stop
+        if ($sig -and $sig.SignerCertificate) {
+            Ensure-CursorCertificateTrusted -Certificate $sig.SignerCertificate
+        }
+    } catch {
+        Write-CursorLog ("Unable to trust Cursor signer certificate for {0}: {1}" -f $InstallerPath, $_.Exception.Message)
+    }
     $arguments = @("/S")
     if (Test-IsAdministrator) {
         Write-Host "Launching Cursor installer without elevation so the editor remains non-admin."
