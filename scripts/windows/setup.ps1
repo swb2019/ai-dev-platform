@@ -412,10 +412,17 @@ function Wait-ForCursorInstallation {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($ExpectedPath -and (Test-Path $ExpectedPath)) {
-            return $true
+            $cli = Get-CursorCliPath -CursorExePath $ExpectedPath
+            if (-not [string]::IsNullOrWhiteSpace($cli) -and (Test-Path $cli)) {
+                return $true
+            }
         }
-        if (Get-CursorInstallPath) {
-            return $true
+        $installPath = Get-CursorInstallPath
+        if ($installPath) {
+            $cliPath = Get-CursorCliPath -CursorExePath $installPath
+            if (-not [string]::IsNullOrWhiteSpace($cliPath) -and (Test-Path $cliPath)) {
+                return $true
+            }
         }
         Start-Sleep -Seconds 5
     }
@@ -439,6 +446,31 @@ function Clear-FileZoneMarker {
     } catch {
         Write-CursorLog ("Failed to clear download marker from {0}: {1}" -f $Path, $_.Exception.Message)
     }
+}
+
+function Wait-ForProcessExitByPath {
+    param(
+        [string]$ExecutablePath,
+        [int]$TimeoutSeconds = 900
+    )
+    if ([string]::IsNullOrWhiteSpace($ExecutablePath) -or -not (Test-Path $ExecutablePath)) {
+        return $true
+    }
+    $fullPath = (Get-Item -LiteralPath $ExecutablePath).FullName
+    $escaped = $fullPath.Replace("\", "\\")
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $processes = Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'"
+        } catch {
+            $processes = @()
+        }
+        if (-not $processes -or $processes.Count -eq 0) {
+            return $true
+        }
+        Start-Sleep -Seconds 3
+    }
+    return $false
 }
 
 function Invoke-CursorInstaller {
@@ -468,6 +500,7 @@ function Invoke-CursorInstaller {
         Write-CursorLog "Attempting non-elevated Cursor installer launch."
         try {
             Start-ProcessNonElevated -FilePath $InstallerPath -ArgumentList $arguments -WorkingDirectory (Split-Path -Path $InstallerPath -Parent)
+            $null = Wait-ForProcessExitByPath -ExecutablePath $InstallerPath -TimeoutSeconds 1200
             if (-not (Wait-ForCursorInstallation -ExpectedPath $ExpectedPath)) {
                 Write-Warning "Cursor installer launched non-elevated. Complete any visible prompts in the standard user session and rerun this step if necessary."
                 Write-CursorLog "Non-elevated Cursor installer launch could not be confirmed automatically within the timeout window."
@@ -2036,10 +2069,22 @@ function Ensure-JsonProperty {
     if (-not $Parent) {
         throw "JSON parent object cannot be null."
     }
-    if (-not ($Parent.PSObject.Properties.Name -contains $Name)) {
-        $Parent | Add-Member -MemberType NoteProperty -Name $Name -Value $DefaultValue
+    $psObject = $Parent
+    try {
+        $null = $psObject.PSObject
+    } catch {
+        if ($Parent -is [System.Collections.IDictionary]) {
+            $psObject = [pscustomobject]$Parent
+        } else {
+            throw "Unsupported JSON parent type: $($Parent.GetType().FullName)"
+        }
     }
-    return $Parent.PSObject.Properties[$Name].Value
+    $property = $psObject.PSObject.Properties | Where-Object { $_.Name -eq $Name }
+    if (-not $property) {
+        $psObject | Add-Member -MemberType NoteProperty -Name $Name -Value $DefaultValue
+        $property = $psObject.PSObject.Properties[$Name]
+    }
+    return $property.Value
 }
 
 function Get-PreferredWslUserName {
