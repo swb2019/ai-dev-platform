@@ -196,6 +196,10 @@ if ! [[ "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || (( PARALLEL_JOBS < 1 )); then
   PARALLEL_JOBS=4
 fi
 
+if (( ! SKIP_HOME )) && (( ! INCLUDE_HOME )); then
+  INCLUDE_HOME=1
+fi
+
 WAIT_N_AVAILABLE=0
 if help wait 2>/dev/null | grep -q -- '-n'; then
   WAIT_N_AVAILABLE=1
@@ -413,18 +417,107 @@ terraform_local_targets=(
 )
 
 home_targets=(
-  "$HOME/.cursor"
   "$HOME/.codex"
+  "$HOME/.cursor"
+  "$HOME/.cursor-server"
+  "$HOME/.infisical"
   "$HOME/.cache/Cursor"
+  "$HOME/.cache/claude-code"
+  "$HOME/.cache/gcloud"
+  "$HOME/.cache/google-cloud-sdk"
   "$HOME/.cache/ms-playwright"
   "$HOME/.cache/pnpm"
-  "$HOME/.local/share/pnpm"
-  "$HOME/.pnpm-store"
-  "$HOME/.turbo"
-  "$HOME/.npm"
+  "$HOME/.config/Cursor"
   "$HOME/.config/gcloud"
+  "$HOME/.local/bin/bq"
+  "$HOME/.local/bin/claude"
+  "$HOME/.local/bin/codex"
+  "$HOME/.local/bin/corepack"
+  "$HOME/.local/bin/gcloud"
+  "$HOME/.local/bin/gh"
+  "$HOME/.local/bin/gsutil"
+  "$HOME/.local/bin/infisical"
+  "$HOME/.local/bin/node"
+  "$HOME/.local/bin/npm"
+  "$HOME/.local/bin/npx"
+  "$HOME/.local/bin/pnpm"
+  "$HOME/.local/bin/terraform"
+  "$HOME/.local/google-cloud-sdk"
+  "$HOME/.local/node-v"*
+  "$HOME/.local/share/Cursor"
+  "$HOME/.local/share/ms-playwright"
+  "$HOME/.local/share/pnpm"
+  "$HOME/.local/state/ms-playwright"
+  "$HOME/.local/state/pnpm"
+  "$HOME/.npm"
+  "$HOME/.pnpm-store"
   "$HOME/.terraform.d"
+  "$HOME/.turbo"
+  "$HOME/.vscode/extensions/openai.chatgpt-"*
+  "$HOME/.vscode/extensions/anthropic.claude-code-"*
+  "$HOME/.vscode-server/extensions/openai.chatgpt-"*
+  "$HOME/.vscode-server/extensions/anthropic.claude-code-"*
+  "$HOME/.cursor-server/extensions/openai.chatgpt-"*
+  "$HOME/.cursor-server/extensions/anthropic.claude-code-"*
 )
+
+remove_empty_dir() {
+  local category="$1"
+  local dir="$2"
+  if [[ ! -d "$dir" ]]; then
+    return
+  fi
+  if find "$dir" -mindepth 1 -print -quit >/dev/null 2>&1; then
+    return
+  fi
+  remove_target "$category" "$dir"
+}
+
+cleanup_npm_global() {
+  local npm_dir="$HOME/.npm-global"
+  [[ -d "$npm_dir" ]] || return
+  local -a entries=(
+    "$npm_dir/bin/codex"
+    "$npm_dir/bin/claude"
+    "$npm_dir/bin/infisical"
+    "$npm_dir/bin/openai-chatgpt"
+    "$npm_dir/lib/node_modules/@infisical"
+    "$npm_dir/lib/node_modules/claude"
+    "$npm_dir/lib/node_modules/codex"
+    "$npm_dir/lib/node_modules/openai-chatgpt"
+  )
+  local path
+  for path in "${entries[@]}"; do
+    remove_target "home-extra" "$path"
+  done
+  local -a prune_dirs=(
+    "$npm_dir/lib/node_modules"
+    "$npm_dir/lib"
+    "$npm_dir/bin"
+    "$npm_dir"
+  )
+  for path in "${prune_dirs[@]}"; do
+    remove_empty_dir "home-extra" "$path"
+  done
+}
+
+remove_generated_ssh_keys() {
+  local ssh_dir="$HOME/.ssh"
+  local priv="$ssh_dir/id_ed25519"
+  local pub="$priv.pub"
+  local marker="ai-dev-platform@local"
+  if [[ -f "$pub" ]] && grep -q "$marker" "$pub" >/dev/null 2>&1; then
+    remove_target "home-extra" "$pub"
+    remove_target "home-extra" "$priv"
+    remove_empty_dir "home-extra" "$ssh_dir"
+  fi
+}
+
+cleanup_additional_home_artifacts() {
+  (( HOME_ENABLED )) || return
+  cleanup_npm_global
+  remove_generated_ssh_keys
+}
 
 declare -a summaries=()
 declare -a json_entries=()
@@ -790,6 +883,7 @@ fi
 if (( HOME_ENABLED )); then
   if prompt "Also remove cached state under $HOME?"; then
     process_targets "home" "${home_targets[@]}"
+    cleanup_additional_home_artifacts
   else
     log_phase "Home cache cleanup skipped by user"
   fi
