@@ -2329,7 +2329,10 @@ function Ensure-DockerDesktop {
     $wslIntegration.enabledDistros = $enabledDistros
     $null = Ensure-JsonProperty -Parent $wslIntegration -Name "defaultDistro" -Default $DistroName
     $wslIntegration.defaultDistro = $DistroName
-    $settings.wslEngineEnabled = $true
+    $settingsDir = Split-Path -Parent $settingsPath
+    if (-not (Test-Path $settingsDir)) {
+        New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null
+    }
     ($settings | ConvertTo-Json -Depth 10) | Set-Content -Path $settingsPath -Encoding UTF8
 
     Write-Host "Starting Docker Desktop..."
