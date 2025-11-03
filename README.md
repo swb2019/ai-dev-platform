@@ -164,7 +164,7 @@ Before you start, make sure you can provide the following:
 ```powershell
 # Optional: sync your sandbox fork with upstream
 Set-Location C:\dev\ai-dev-platform
-powershell -ExecutionPolicy Bypass -File .\sync-sandbox.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1
 ```
 
 This script authenticates the GitHub CLI if necessary, ensures your fork exists, mirrors the latest upstream commits, and sets the correct remotes.
@@ -173,7 +173,7 @@ This script authenticates the GitHub CLI if necessary, ensures your fork exists,
 
 ```powershell
 # Run the automated bootstrap (requires elevation)
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows\setup.ps1
 ```
 
 What the helper does:
