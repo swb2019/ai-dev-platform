@@ -344,9 +344,14 @@ remove_target() {
     fi
   else
     if (( exists )); then
-      rm -rf "$target"
-      echo "Removed [$category] $target"
-      telemetry_emit "delete.$category" "ok" "$target"
+      if rm -rf "$target"; then
+        echo "Removed [$category] $target"
+        telemetry_emit "delete.$category" "ok" "$target"
+      else
+        local status=$?
+        echo "Failed to remove [$category] $target (exit $status)" >&2
+        telemetry_emit "delete.$category" "error" "$target"
+      fi
     else
       echo "Skipped [$category] $target (not found)"
       telemetry_emit "delete.$category" "missing" "$target"
