@@ -35,16 +35,16 @@
 
 2. **Sync your fork (optional but recommended)**
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\sync-sandbox.ps1
-   ```
+```powershell
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1
+```
 
-   This signs in the GitHub CLI, creates the fork if it does not exist, and force-updates your `main` with the latest upstream commits.
+This signs in the GitHub CLI, creates the fork if it does not exist, and force-updates your `main` with the latest upstream commits.
 
 3. **Run the consolidated setup**
    - Windows (elevated PowerShell):
      ```powershell
-     powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup.ps1
+     powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows\setup.ps1
      ```
    - macOS / Linux / inside WSL:
      ```bash
