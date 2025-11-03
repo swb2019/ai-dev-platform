@@ -2337,11 +2337,23 @@ function Ensure-DockerDesktop {
 
     Write-Host "Starting Docker Desktop..."
     Start-Process -FilePath $dockerExe | Out-Null
+    $dockerCli = Join-Path $env:ProgramFiles "Docker\Docker\DockerCli.exe"
+    if (Test-Path $dockerCli) {
+        try {
+            & $dockerCli -SwitchLinuxEngine | Out-Null
+        } catch {}
+        try {
+            & $dockerCli -EnableFeatures | Out-Null
+        } catch {}
+        try {
+            & $dockerCli -ApplyWSLIntegration -d $DistroName | Out-Null
+        } catch {}
+    }
 
     Write-Host "Waiting for Docker daemon inside WSL..."
     $attempts = 0
     $restartAttempts = 0
-    while ($attempts -lt 60) {
+    while ($attempts -lt 90) {
         $result = Invoke-Wsl -Command "docker info >/dev/null 2>&1"
         if ($result.ExitCode -eq 0) {
             return
