@@ -671,11 +671,11 @@ function Get-CursorCliPath {
     if ($CursorExePath) {
         $installRoot = Split-Path -Path $CursorExePath -Parent
         if ($installRoot) {
-            $candidates += Join-Path $installRoot "resources\app\bin\cursor.exe"
             $candidates += Join-Path $installRoot "resources\app\bin\cursor.cmd"
+            $candidates += Join-Path $installRoot "resources\app\bin\cursor.exe"
             $candidates += Join-Path $installRoot "resources\app\bin\cursor"
-            $candidates += Join-Path $installRoot "bin\cursor.exe"
             $candidates += Join-Path $installRoot "bin\cursor.cmd"
+            $candidates += Join-Path $installRoot "bin\cursor.exe"
         }
     }
 
