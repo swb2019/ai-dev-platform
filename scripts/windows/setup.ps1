@@ -47,6 +47,37 @@ function Write-Section {
     Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
+function Clear-DownloadZoneMarkers {
+    param([string]$Root)
+    if (-not (Test-Path $Root)) {
+        return
+    }
+    Write-Section "Clearing Windows download markers"
+    $patterns = @("*.ps1","*.psm1","*.psd1","*.cmd","*.bat","*.exe","*.msi","*.sh")
+    $files = Get-ChildItem -LiteralPath $Root -Recurse -File -Include $patterns -ErrorAction SilentlyContinue
+    if (-not $files) {
+        Write-Host "No download markers detected." -ForegroundColor Green
+        return
+    }
+    $cleared = 0
+    foreach ($file in $files) {
+        try {
+            $stream = Get-Item -LiteralPath $file.FullName -Stream "Zone.Identifier" -ErrorAction SilentlyContinue
+            if ($null -ne $stream) {
+                Unblock-File -LiteralPath $file.FullName -ErrorAction Stop
+                $cleared++
+            }
+        } catch {
+            continue
+        }
+    }
+    if ($cleared -gt 0) {
+        Write-Host ("Removed security zone markers from {0} file(s)." -f $cleared) -ForegroundColor Green
+    } else {
+        Write-Host "No security zone markers required removal." -ForegroundColor Green
+    }
+}
+
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -2487,6 +2518,7 @@ function Prompt-OptionalToken {
 Write-Section "Windows bootstrap for AI Dev Platform"
 Test-NetworkConnectivity
 Ensure-Administrator
+Clear-DownloadZoneMarkers -Root $script:RepoRoot
 Ensure-WslResourceConfig
 Enable-WindowsFeatures
 Ensure-WslDistribution -Name $DistroName
