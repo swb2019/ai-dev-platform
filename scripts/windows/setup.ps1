@@ -2167,6 +2167,12 @@ function Test-NetworkConnectivity {
 function Ensure-WslPackages {
     Write-Section "Installing base packages inside WSL"
     $cmd = @"
+if [ -f /etc/apt/sources.list.d/github-cli.list ]; then
+  if ! grep -Eq '^deb \[arch=[^[:space:]]+ signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg\] https://cli.github.com/packages stable main$' /etc/apt/sources.list.d/github-cli.list; then
+    echo "Removing malformed GitHub CLI apt source definition" >&2
+    rm -f /etc/apt/sources.list.d/github-cli.list
+  fi
+fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
 "@
