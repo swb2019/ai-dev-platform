@@ -2190,7 +2190,8 @@ if [ ! -f /usr/share/keyrings/githubcli-archive-keyring.gpg ]; then
   chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
 fi
 if [ ! -f /etc/apt/sources.list.d/github-cli.list ]; then
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+  ARCH=$(dpkg --print-architecture)
+  echo "deb [arch=${ARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
 fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y gh
