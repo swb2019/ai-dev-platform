@@ -2166,16 +2166,16 @@ function Test-NetworkConnectivity {
 
 function Ensure-WslPackages {
     Write-Section "Installing base packages inside WSL"
-    $cmd = @"
+    $cmd = @'
 if [ -f /etc/apt/sources.list.d/github-cli.list ]; then
-  if ! grep -q "https://cli.github.com/packages stable main" /etc/apt/sources.list.d/github-cli.list || ! grep -q "signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg" /etc/apt/sources.list.d/github-cli.list; then
-    echo "Removing malformed GitHub CLI apt source definition" >&2
+  if ! grep -q 'https://cli.github.com/packages stable main' /etc/apt/sources.list.d/github-cli.list || ! grep -q 'signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg' /etc/apt/sources.list.d/github-cli.list; then
+    echo 'Removing malformed GitHub CLI apt source definition' >&2
     rm -f /etc/apt/sources.list.d/github-cli.list
   fi
 fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
-"@
+'@
     $result = Invoke-Wsl -Command $cmd -AsRoot
     if ($result.ExitCode -ne 0) {
         throw "Failed to install base packages in WSL (exit $($result.ExitCode))."
