@@ -2167,13 +2167,25 @@ function Test-NetworkConnectivity {
 function Ensure-WslPackages {
     Write-Section "Installing base packages inside WSL"
     $cmd = @'
-if [ -f /etc/apt/sources.list.d/github-cli.list ]; then
-  if ! grep -q 'https://cli.github.com/packages stable main' /etc/apt/sources.list.d/github-cli.list || ! grep -q 'signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg' /etc/apt/sources.list.d/github-cli.list; then
-    echo 'Removing malformed GitHub CLI apt source definition' >&2
-    rm -f /etc/apt/sources.list.d/github-cli.list
+GITHUB_CLI_LIST=/etc/apt/sources.list.d/github-cli.list
+if [ -f "$GITHUB_CLI_LIST" ]; then
+  expected_entry="deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+  sanitized_entry="$(tr -d "\r" <"$GITHUB_CLI_LIST" | awk 'NR==1 {gsub(/[[:space:]]+/," "); sub(/^ /,""); sub(/ $/,""); print; exit}')"
+  extra_content="$(tr -d "\r" <"$GITHUB_CLI_LIST" | awk 'NR>1 {print; exit}')"
+  if [ "$sanitized_entry" != "$expected_entry" ] || [ -n "$extra_content" ]; then
+    echo 'Resetting malformed GitHub CLI apt source definition' >&2
+    printf '%s\n' "$expected_entry" >"$GITHUB_CLI_LIST"
   fi
 fi
-apt-get update
+if ! apt-get update; then
+  if [ -f "$GITHUB_CLI_LIST" ]; then
+    echo 'apt-get update failed; removing GitHub CLI apt source and retrying' >&2
+    rm -f "$GITHUB_CLI_LIST"
+    apt-get update
+  else
+    exit 1
+  fi
+fi
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
 '@
     $result = Invoke-Wsl -Command $cmd -AsRoot
