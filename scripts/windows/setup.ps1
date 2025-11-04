@@ -2169,17 +2169,19 @@ function Ensure-WslPackages {
     $cmd = @'
 GITHUB_CLI_LIST=/etc/apt/sources.list.d/github-cli.list
 if [ -f "$GITHUB_CLI_LIST" ]; then
-  expected_entry="deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
-  sanitized_entry="$(tr -d "\r" <"$GITHUB_CLI_LIST" | awk 'NR==1 {gsub(/[[:space:]]+/," "); sub(/^ /,""); sub(/ $/,""); print; exit}')"
-  extra_content="$(tr -d "\r" <"$GITHUB_CLI_LIST" | awk 'NR>1 {print; exit}')"
-  if [ "$sanitized_entry" != "$expected_entry" ] || [ -n "$extra_content" ]; then
-    echo 'Resetting malformed GitHub CLI apt source definition' >&2
+  expected_arch="$(dpkg --print-architecture)"
+  expected_entry="deb [arch=${expected_arch} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+  IFS= read -r first_line <"$GITHUB_CLI_LIST" || first_line=""
+  first_line="${first_line//$'\r'/}"
+  line_count="$(wc -l <"$GITHUB_CLI_LIST")"
+  if [ "$first_line" != "$expected_entry" ] || [ "$line_count" != "1" ]; then
+    echo "Resetting malformed GitHub CLI apt source definition" >&2
     printf '%s\n' "$expected_entry" >"$GITHUB_CLI_LIST"
   fi
 fi
 if ! apt-get update; then
   if [ -f "$GITHUB_CLI_LIST" ]; then
-    echo 'apt-get update failed; removing GitHub CLI apt source and retrying' >&2
+    echo "apt-get update failed; removing GitHub CLI apt source and retrying" >&2
     rm -f "$GITHUB_CLI_LIST"
     apt-get update
   else
