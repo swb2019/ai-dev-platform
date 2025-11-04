@@ -2176,6 +2176,31 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build
     }
 }
 
+function Ensure-WslGithubCli {
+    Write-Section "Ensuring GitHub CLI is available inside WSL"
+    $check = Invoke-Wsl -Command "command -v gh >/dev/null 2>&1"
+    if ($check.ExitCode -eq 0) {
+        Write-Host "GitHub CLI already installed in WSL." -ForegroundColor Green
+        return
+    }
+    $installScript = @"
+set -euo pipefail
+if [ ! -f /usr/share/keyrings/githubcli-archive-keyring.gpg ]; then
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+  chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+fi
+if [ ! -f /etc/apt/sources.list.d/github-cli.list ]; then
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+fi
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y gh
+"@
+    $installResult = Invoke-Wsl -Command $installScript -AsRoot
+    if ($installResult.ExitCode -ne 0) {
+        throw "Failed to install GitHub CLI inside WSL (exit $($installResult.ExitCode))."
+    }
+}
+
 function Install-DockerDesktopFromUrl {
     $uri = "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
     $tempPath = [System.IO.Path]::GetTempPath()
@@ -2737,6 +2762,7 @@ Ensure-WslDistribution -Name $DistroName
 Ensure-WslDefault -Name $DistroName
 Ensure-WslInitialized -Name $DistroName
 Ensure-WslPackages
+Ensure-WslGithubCli
 Ensure-Cursor
 Ensure-CursorExtensions
 
