@@ -2185,14 +2185,13 @@ function Ensure-WslGithubCli {
     }
     $installScript = @'
 set -euo pipefail
-ARCH=$(dpkg --print-architecture)
 if [ ! -f /usr/share/keyrings/githubcli-archive-keyring.gpg ]; then
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
   chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
 fi
 if [ ! -f /etc/apt/sources.list.d/github-cli.list ]; then
-  cat <<EOF >/etc/apt/sources.list.d/github-cli.list
-deb [arch=${ARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
+  cat <<"EOF" >/etc/apt/sources.list.d/github-cli.list
+deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
 EOF
 fi
 apt-get update
