@@ -2183,7 +2183,7 @@ function Ensure-WslGithubCli {
         Write-Host "GitHub CLI already installed in WSL." -ForegroundColor Green
         return
     }
-    $installScript = @"
+    $installScript = @'
 set -euo pipefail
 if [ ! -f /usr/share/keyrings/githubcli-archive-keyring.gpg ]; then
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -2194,7 +2194,7 @@ if [ ! -f /etc/apt/sources.list.d/github-cli.list ]; then
 fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y gh
-"@
+'@
     $installResult = Invoke-Wsl -Command $installScript -AsRoot
     if ($installResult.ExitCode -ne 0) {
         throw "Failed to install GitHub CLI inside WSL (exit $($installResult.ExitCode))."
