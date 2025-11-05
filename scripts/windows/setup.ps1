@@ -2190,12 +2190,16 @@ if ! apt-get update; then
 fi
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
 '@
-    $command = @"
+    $normalizedScript = $scriptContent.Replace("`r","")
+    $commandTemplate = @'
 cat <<'__CODA__' >/tmp/ensure-wsl-packages.sh
-$scriptContent
+__SCRIPT_CONTENT__
 __CODA__
 bash /tmp/ensure-wsl-packages.sh
-"@
+rm -f /tmp/ensure-wsl-packages.sh
+'@
+    $command = $commandTemplate.Replace("__SCRIPT_CONTENT__", $normalizedScript)
+    $command = $command.Replace("`r","")
     $result = Invoke-Wsl -Command $command -AsRoot
     if ($result.ExitCode -ne 0) {
         throw "Failed to install base packages in WSL (exit $($result.ExitCode))."
@@ -2220,12 +2224,16 @@ printf "deb [arch=%s signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y gh
 '@
-    $installCommand = @"
+    $normalizedInstall = $installScript.Replace("`r","")
+    $installTemplate = @'
 cat <<'__CODA__' >/tmp/install-gh-cli.sh
-$installScript
+__SCRIPT_CONTENT__
 __CODA__
 bash /tmp/install-gh-cli.sh
-"@
+rm -f /tmp/install-gh-cli.sh
+'@
+    $installCommand = $installTemplate.Replace("__SCRIPT_CONTENT__", $normalizedInstall)
+    $installCommand = $installCommand.Replace("`r","")
     $installResult = Invoke-Wsl -Command $installCommand -AsRoot
     if ($installResult.ExitCode -ne 0) {
         throw "Failed to install GitHub CLI inside WSL (exit $($installResult.ExitCode))."
