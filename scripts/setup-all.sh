@@ -181,6 +181,10 @@ execute_step() {
     return 0
   fi
   local status=$?
+  if (( status == 3 )); then
+    log "${label} skipped (see guidance above)."
+    return 0
+  fi
   record_failure "${label} failed with exit status ${status}"
   printf '\n%s failed with exit status %d. Review the output above, resolve the issue, then rerun this script.\n' "$label" "$status" >&2
   exit "$status"

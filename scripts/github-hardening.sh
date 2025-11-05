@@ -87,6 +87,10 @@ heading() {
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 PENDING_NOTICE_FILE="$REPO_ROOT/tmp/github-hardening.pending"
+REQUIRED_SCOPES=(repo workflow)
+REQUIRED_SCOPE_LIST="repo,workflow"
+OWNER_TYPE=""
+HARDENING_SKIPPED_EXIT_CODE=3
 
 write_pending_notice() {
   mkdir -p "$(dirname "$PENDING_NOTICE_FILE")"
@@ -94,7 +98,7 @@ write_pending_notice() {
 GitHub repository hardening requires GitHub CLI authentication.
 
 Next steps for ${OWNER}/${REPO}:
-  1. Run: gh auth login --hostname github.com --git-protocol https --web --scopes "repo,workflow,admin:org"
+  1. Run: gh auth login --hostname github.com --git-protocol https --web --scopes "$REQUIRED_SCOPE_LIST"
      and complete the browser flow when prompted.
   2. Re-run ./scripts/github-hardening.sh once authentication completes.
 
@@ -106,13 +110,37 @@ clear_pending_notice() {
   rm -f "$PENDING_NOTICE_FILE"
 }
 
+detect_owner_type() {
+  OWNER_TYPE=""
+  if [[ -z "$OWNER" ]]; then
+    return
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    return
+  fi
+  local response type
+  response=$(curl -fsSL "https://api.github.com/users/${OWNER}" 2>/dev/null || true)
+  if [[ -z "$response" ]]; then
+    return
+  fi
+  type=$(printf '%s' "$response" | awk -F'"' '/"type"/ {print $4; exit}')
+  OWNER_TYPE="$type"
+  if [[ "$type" == "Organization" ]]; then
+    REQUIRED_SCOPES=(repo workflow admin:org)
+    REQUIRED_SCOPE_LIST="repo,workflow,admin:org"
+  else
+    REQUIRED_SCOPES=(repo workflow)
+    REQUIRED_SCOPE_LIST="repo,workflow"
+  fi
+}
+
 has_required_scopes() {
   local scopes_line scope
   scopes_line="$(gh auth status --hostname github.com 2>&1 | grep -i '^Scopes:' || true)"
   if [[ -z "$scopes_line" ]]; then
     return 1
   fi
-  for scope in repo workflow "admin:org"; do
+  for scope in "${REQUIRED_SCOPES[@]}"; do
     if ! [[ "$scopes_line" =~ (^|[[:space:],])$scope($|[[:space:],]) ]]; then
       return 1
     fi
@@ -124,9 +152,8 @@ ensure_gh_scopes() {
   if has_required_scopes; then
     return 0
   fi
-  local required="repo,workflow,admin:org"
-  echo "Ensuring GitHub CLI token has scopes: $required" >&2
-  gh auth refresh --hostname github.com --scopes "$required" >/dev/null 2>&1 || return 1
+  echo "Ensuring GitHub CLI token has scopes: $REQUIRED_SCOPE_LIST" >&2
+  gh auth refresh --hostname github.com --scopes "$REQUIRED_SCOPE_LIST" >/dev/null 2>&1 || return 1
   has_required_scopes
 }
 
@@ -271,7 +298,7 @@ require_gh() {
     fi
 
     echo "→ Starting gh auth login (attempt ${attempt})"
-    gh auth login --hostname github.com --git-protocol https --web --scopes "repo,workflow,admin:org" || true
+    gh auth login --hostname github.com --git-protocol https --web --scopes "$REQUIRED_SCOPE_LIST" || true
 
     if gh auth status >/dev/null 2>&1; then
       record_gh_user
@@ -285,12 +312,19 @@ require_gh() {
       echo "GitHub authentication was not detected." >&2
     fi
 
+    read -r -p "Skip GitHub repository hardening for now? [y/N] " _skip
+    if [[ "$_skip" =~ ^[Yy]$ ]]; then
+      write_pending_notice
+      echo "Skipping GitHub repository hardening. Run ./scripts/github-hardening.sh after granting the required access." >&2
+      return "$HARDENING_SKIPPED_EXIT_CODE"
+    fi
+
     read -r -p "Retry GitHub authentication with a different account? [Y/n] " _retry
     _retry="${_retry:-Y}"
     if [[ ! "$_retry" =~ ^[Yy] ]]; then
       write_pending_notice
       echo "GitHub authentication with admin rights is required to configure repository hardening." >&2
-      exit 1
+      return 1
     fi
     attempt=$((attempt + 1))
   done
@@ -490,8 +524,15 @@ main() {
   load_config_if_present
   parse_args "$@"
   FULL_REPO="${OWNER}/${REPO}"
+  detect_owner_type
 
   require_gh
+  status=$?
+  if (( status == HARDENING_SKIPPED_EXIT_CODE )); then
+    exit "$HARDENING_SKIPPED_EXIT_CODE"
+  elif (( status != 0 )); then
+    exit "$status"
+  fi
   enable_security_features
   configure_branch_protection
   enforce_signed_commits
