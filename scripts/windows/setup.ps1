@@ -2190,8 +2190,12 @@ if ! apt-get update; then
 fi
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
 '@
-    $encodedScript = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($scriptContent))
-    $command = "printf '%s' '$encodedScript' | base64 -d | bash"
+    $command = @"
+cat <<'__CODA__' >/tmp/ensure-wsl-packages.sh
+$scriptContent
+__CODA__
+bash /tmp/ensure-wsl-packages.sh
+"@
     $result = Invoke-Wsl -Command $command -AsRoot
     if ($result.ExitCode -ne 0) {
         throw "Failed to install base packages in WSL (exit $($result.ExitCode))."
@@ -2216,8 +2220,12 @@ printf "deb [arch=%s signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y gh
 '@
-    $encodedInstallScript = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($installScript))
-    $installCommand = "printf '%s' '$encodedInstallScript' | base64 -d | bash"
+    $installCommand = @"
+cat <<'__CODA__' >/tmp/install-gh-cli.sh
+$installScript
+__CODA__
+bash /tmp/install-gh-cli.sh
+"@
     $installResult = Invoke-Wsl -Command $installCommand -AsRoot
     if ($installResult.ExitCode -ne 0) {
         throw "Failed to install GitHub CLI inside WSL (exit $($installResult.ExitCode))."
