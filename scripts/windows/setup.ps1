@@ -2191,14 +2191,12 @@ fi
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
 '@
     $normalizedScript = $scriptContent.Replace("`r","")
-    $commandTemplate = @'
-cat <<'__CODA__' >/tmp/ensure-wsl-packages.sh
-__SCRIPT_CONTENT__
+    $encodedScript = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($normalizedScript))
+    $command = @"
+base64 -d <<'__CODA__' | bash
+$encodedScript
 __CODA__
-bash /tmp/ensure-wsl-packages.sh
-rm -f /tmp/ensure-wsl-packages.sh
-'@
-    $command = $commandTemplate.Replace("__SCRIPT_CONTENT__", $normalizedScript)
+"@
     $command = $command.Replace("`r","")
     $result = Invoke-Wsl -Command $command -AsRoot
     if ($result.ExitCode -ne 0) {
@@ -2225,14 +2223,12 @@ apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y gh
 '@
     $normalizedInstall = $installScript.Replace("`r","")
-    $installTemplate = @'
-cat <<'__CODA__' >/tmp/install-gh-cli.sh
-__SCRIPT_CONTENT__
+    $encodedInstall = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($normalizedInstall))
+    $installCommand = @"
+base64 -d <<'__CODA__' | bash
+$encodedInstall
 __CODA__
-bash /tmp/install-gh-cli.sh
-rm -f /tmp/install-gh-cli.sh
-'@
-    $installCommand = $installTemplate.Replace("__SCRIPT_CONTENT__", $normalizedInstall)
+"@
     $installCommand = $installCommand.Replace("`r","")
     $installResult = Invoke-Wsl -Command $installCommand -AsRoot
     if ($installResult.ExitCode -ne 0) {
