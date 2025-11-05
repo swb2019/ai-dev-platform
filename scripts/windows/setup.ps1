@@ -2166,7 +2166,7 @@ function Test-NetworkConnectivity {
 
 function Ensure-WslPackages {
     Write-Section "Installing base packages inside WSL"
-    $cmd = @'
+    $scriptContent = @'
 GITHUB_CLI_LIST=/etc/apt/sources.list.d/github-cli.list
 if [ -f "$GITHUB_CLI_LIST" ]; then
   expected_arch="$(dpkg --print-architecture)"
@@ -2190,8 +2190,9 @@ if ! apt-get update; then
 fi
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
 '@
-    $escapedCmd = $cmd.Replace('"','\"')
-    $result = Invoke-Wsl -Command $escapedCmd -AsRoot
+    $encodedScript = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($scriptContent))
+    $command = "printf '%s' '$encodedScript' | base64 -d | bash"
+    $result = Invoke-Wsl -Command $command -AsRoot
     if ($result.ExitCode -ne 0) {
         throw "Failed to install base packages in WSL (exit $($result.ExitCode))."
     }
@@ -2215,7 +2216,9 @@ printf "deb [arch=%s signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y gh
 '@
-    $installResult = Invoke-Wsl -Command $installScript -AsRoot
+    $encodedInstallScript = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($installScript))
+    $installCommand = "printf '%s' '$encodedInstallScript' | base64 -d | bash"
+    $installResult = Invoke-Wsl -Command $installCommand -AsRoot
     if ($installResult.ExitCode -ne 0) {
         throw "Failed to install GitHub CLI inside WSL (exit $($installResult.ExitCode))."
     }
