@@ -2190,7 +2190,8 @@ if ! apt-get update; then
 fi
 DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl build-essential python3 python3-pip unzip pkg-config wslu
 '@
-    $result = Invoke-Wsl -Command $cmd -AsRoot
+    $escapedCmd = $cmd.Replace('"','\"')
+    $result = Invoke-Wsl -Command $escapedCmd -AsRoot
     if ($result.ExitCode -ne 0) {
         throw "Failed to install base packages in WSL (exit $($result.ExitCode))."
     }
