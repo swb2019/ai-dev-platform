@@ -2454,6 +2454,10 @@ function Ensure-CloudBootstrap {
     param([string]$RepoSlug)
 
     Write-Section "Cloud account provisioning"
+    if ($env:WINDOWS_AUTOMATED_SETUP -eq '1') {
+        Write-Host "Skipping cloud account provisioning in automated setup mode." -ForegroundColor Yellow
+        return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
+    }
     $proceedInput = Read-Host "Configure Google Cloud authentication and GitHub environments now? [Y/n]"
     if ($proceedInput -match '^[Nn]') {
         return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
@@ -2808,6 +2812,14 @@ if (-not $SkipDockerInstall) {
 Ensure-Repository
 
 if (-not $SkipSetupAll) {
+    if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")) -and
+        [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process"))) {
+        Write-Section "GitHub personal access token"
+        Write-Host "Create a GitHub Personal Access Token with scopes: repo, workflow" -ForegroundColor Yellow
+        Write-Host "Add admin:org if you administer the repository's organization." -ForegroundColor Yellow
+        Write-Host "Generate it at https://github.com/settings/tokens, then paste it at the prompt below." -ForegroundColor Yellow
+        Write-Host "Tip: set GH_TOKEN in advance (e.g., 'setx GH_TOKEN <token>' on Windows) to skip this prompt next time." -ForegroundColor Yellow
+    }
     $ghTokenAdded = Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage "Optional GitHub token (scopes: repo,workflow; add admin:org for org repos)"
     $infTokenAdded = Prompt-OptionalToken -EnvName "INFISICAL_TOKEN" -PromptMessage "Optional Infisical token"
     Run-SetupAll
