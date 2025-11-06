@@ -29,6 +29,9 @@ REQUIRE_CONVERSATION_RESOLUTION=true
 
 REQUIRE_SIGNED_COMMITS=true
 
+TOKEN_ENV_VARS=(GH_TOKEN SETUP_GITHUB_TOKEN)
+TOKEN_LOGIN_ATTEMPTED=0
+
 trim() {
   local value="$1"
   value="${value#${value%%[![:space:]]*}}"
@@ -95,12 +98,13 @@ HARDENING_SKIPPED_EXIT_CODE=3
 write_pending_notice() {
   mkdir -p "$(dirname "$PENDING_NOTICE_FILE")"
   cat >"$PENDING_NOTICE_FILE" <<EOF
-GitHub repository hardening requires GitHub CLI authentication.
+GitHub repository hardening requires GitHub CLI authentication with scopes: $REQUIRED_SCOPE_LIST${OWNER_TYPE:+ (current owner type: $OWNER_TYPE)}.
 
 Next steps for ${OWNER}/${REPO}:
-  1. Run: gh auth login --hostname github.com --git-protocol https --web --scopes "$REQUIRED_SCOPE_LIST"
-     and complete the browser flow when prompted.
-  2. Re-run ./scripts/github-hardening.sh once authentication completes.
+  1. Create a GitHub personal access token with the scopes above and, if applicable, administrator access to the repository.
+  2. Export it as GH_TOKEN before running the Windows bootstrap (or `./scripts/github-hardening.sh`).
+     Example: `setx GH_TOKEN <token>` on Windows or `export GH_TOKEN=<token>` inside WSL/Linux.
+  3. Re-run ./scripts/github-hardening.sh once authentication completes.
 
 This step configures branch protections, environments, and security features for the repository.
 EOF
@@ -132,6 +136,34 @@ detect_owner_type() {
     REQUIRED_SCOPES=(repo workflow)
     REQUIRED_SCOPE_LIST="repo,workflow"
   fi
+}
+
+maybe_login_with_token() {
+  if (( TOKEN_LOGIN_ATTEMPTED )); then
+    return 1
+  fi
+  local token=""
+  for var in "${TOKEN_ENV_VARS[@]}"; do
+    if [[ -n "${!var:-}" ]]; then
+      token="${!var}"
+      break
+    fi
+  done
+  if [[ -z "$token" ]]; then
+    return 1
+  fi
+  TOKEN_LOGIN_ATTEMPTED=1
+  if printf '%s\n' "$token" | gh auth login --hostname github.com --git-protocol https --with-token >/dev/null 2>&1; then
+    record_gh_user
+    if [[ -n "$GH_USER" ]]; then
+      echo "Authenticated GitHub CLI as $GH_USER using provided token."
+    else
+      echo "Authenticated GitHub CLI using provided token."
+    fi
+    return 0
+  fi
+  echo "Unable to authenticate GitHub CLI using provided token; falling back to interactive flow." >&2
+  return 1
 }
 
 has_required_scopes() {
@@ -274,6 +306,10 @@ require_gh() {
 
   local attempt=1
   while (( attempt <= 2 )); do
+    if ! gh auth status >/dev/null 2>&1; then
+      maybe_login_with_token >/dev/null 2>&1 || true
+    fi
+
     if gh auth status >/dev/null 2>&1; then
       record_gh_user
       if ensure_gh_scopes && ensure_repo_admin_access; then

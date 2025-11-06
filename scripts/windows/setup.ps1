@@ -2808,7 +2808,7 @@ if (-not $SkipDockerInstall) {
 Ensure-Repository
 
 if (-not $SkipSetupAll) {
-    $ghTokenAdded = Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage "Optional GitHub token to streamline gh auth"
+    $ghTokenAdded = Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage "Optional GitHub token (scopes: repo,workflow; add admin:org for org repos)"
     $infTokenAdded = Prompt-OptionalToken -EnvName "INFISICAL_TOKEN" -PromptMessage "Optional Infisical token"
     Run-SetupAll
     if ($ghTokenAdded) { Remove-Item -Path Env:GH_TOKEN -ErrorAction SilentlyContinue }
