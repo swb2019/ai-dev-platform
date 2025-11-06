@@ -2454,6 +2454,10 @@ function Ensure-CloudBootstrap {
     param([string]$RepoSlug)
 
     Write-Section "Cloud account provisioning"
+    if ($env:WINDOWS_AUTOMATED_SETUP -eq '1') {
+        Write-Host "Skipping cloud account provisioning in automated setup mode." -ForegroundColor Yellow
+        return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
+    }
     $proceedInput = Read-Host "Configure Google Cloud authentication and GitHub environments now? [Y/n]"
     if ($proceedInput -match '^[Nn]') {
         return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }

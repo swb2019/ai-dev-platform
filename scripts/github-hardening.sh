@@ -305,6 +305,7 @@ require_gh() {
   fi
 
   local attempt=1
+  local auto_mode="${WINDOWS_AUTOMATED_SETUP:-0}"
   while (( attempt <= 2 )); do
     if ! gh auth status >/dev/null 2>&1; then
       maybe_login_with_token >/dev/null 2>&1 || true
@@ -333,6 +334,12 @@ require_gh() {
 
       write_pending_notice
       echo "Skipping GitHub repository hardening. Run ./scripts/github-hardening.sh after granting the required access." >&2
+      return "$HARDENING_SKIPPED_EXIT_CODE"
+    fi
+
+    if [[ "$auto_mode" == "1" ]]; then
+      write_pending_notice
+      echo "GitHub CLI is not authenticated and automatic login is disabled in automated mode." >&2
       return "$HARDENING_SKIPPED_EXIT_CODE"
     fi
 
