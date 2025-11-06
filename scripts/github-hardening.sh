@@ -273,8 +273,7 @@ require_gh() {
   fi
 
   local attempt=1
-  local max_attempts=2
-  while (( attempt <= max_attempts )); do
+  while (( attempt <= 2 )); do
     if gh auth status >/dev/null 2>&1; then
       record_gh_user
       if ensure_gh_scopes && ensure_repo_admin_access; then
@@ -286,27 +285,29 @@ require_gh() {
         fi
         return 0
       fi
+
       echo "GitHub token lacks required scopes or administrator rights; attempting to refresh." >&2
       ensure_gh_scopes >/dev/null 2>&1 || true
-    else
-      echo "GitHub CLI is not authenticated." >&2
-    fi
 
-    if (( attempt == max_attempts )); then
+      if ensure_gh_scopes && ensure_repo_admin_access; then
+        clear_pending_notice
+        echo "GitHub CLI authentication detected. Continuing repository hardening."
+        return 0
+      fi
+
       write_pending_notice
       echo "Skipping GitHub repository hardening. Run ./scripts/github-hardening.sh after granting the required access." >&2
       return "$HARDENING_SKIPPED_EXIT_CODE"
     fi
 
-    if [[ ! -t 0 ]]; then
+    if (( attempt == 2 )) || [[ ! -t 0 ]]; then
       write_pending_notice
-      echo "Cannot complete GitHub authentication in a non-interactive environment." >&2
-      return 1
+      echo "GitHub CLI is not authenticated and automatic login is not possible." >&2
+      return "$HARDENING_SKIPPED_EXIT_CODE"
     fi
 
     echo "→ Starting gh auth login (attempt ${attempt})"
     gh auth login --hostname github.com --git-protocol https --web --scopes "$REQUIRED_SCOPE_LIST" || true
-
     attempt=$((attempt + 1))
   done
 
