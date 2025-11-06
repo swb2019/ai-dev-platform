@@ -273,7 +273,8 @@ require_gh() {
   fi
 
   local attempt=1
-  while true; do
+  local max_attempts=2
+  while (( attempt <= max_attempts )); do
     if gh auth status >/dev/null 2>&1; then
       record_gh_user
       if ensure_gh_scopes && ensure_repo_admin_access; then
@@ -291,43 +292,26 @@ require_gh() {
       echo "GitHub CLI is not authenticated." >&2
     fi
 
-    if [[ ! -t 0 ]]; then
-      write_pending_notice
-      echo "Cannot complete GitHub authentication in a non-interactive environment." >&2
-      exit 1
-    fi
-
-    echo "→ Starting gh auth login (attempt ${attempt})"
-    gh auth login --hostname github.com --git-protocol https --web --scopes "$REQUIRED_SCOPE_LIST" || true
-
-    if gh auth status >/dev/null 2>&1; then
-      record_gh_user
-      if ensure_gh_scopes && ensure_repo_admin_access; then
-        clear_pending_notice
-        echo "GitHub CLI authentication detected. Continuing repository hardening."
-        return 0
-      fi
-      echo "Authenticated user does not have the required scopes or admin rights on ${FULL_REPO}." >&2
-    else
-      echo "GitHub authentication was not detected." >&2
-    fi
-
-    read -r -p "Skip GitHub repository hardening for now? [y/N] " _skip
-    if [[ "$_skip" =~ ^[Yy]$ ]]; then
+    if (( attempt == max_attempts )); then
       write_pending_notice
       echo "Skipping GitHub repository hardening. Run ./scripts/github-hardening.sh after granting the required access." >&2
       return "$HARDENING_SKIPPED_EXIT_CODE"
     fi
 
-    read -r -p "Retry GitHub authentication with a different account? [Y/n] " _retry
-    _retry="${_retry:-Y}"
-    if [[ ! "$_retry" =~ ^[Yy] ]]; then
+    if [[ ! -t 0 ]]; then
       write_pending_notice
-      echo "GitHub authentication with admin rights is required to configure repository hardening." >&2
+      echo "Cannot complete GitHub authentication in a non-interactive environment." >&2
       return 1
     fi
+
+    echo "→ Starting gh auth login (attempt ${attempt})"
+    gh auth login --hostname github.com --git-protocol https --web --scopes "$REQUIRED_SCOPE_LIST" || true
+
     attempt=$((attempt + 1))
   done
+
+  write_pending_notice
+  return "$HARDENING_SKIPPED_EXIT_CODE"
 }
 
 enable_security_features() {
