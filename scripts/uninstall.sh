@@ -751,11 +751,13 @@ function Remove-Tree {
 }
 
 $paths = @(
-    "$env:ProgramData\ai-dev-platform",
-    "$env:LOCALAPPDATA\ai-dev-platform",
-    "$env:LOCALAPPDATA\Cursor",
-    "$env:LOCALAPPDATA\Programs\Cursor",
-    "$env:APPDATA\Cursor",
+  "$env:ProgramData\ai-dev-platform",
+  "$env:LOCALAPPDATA\ai-dev-platform",
+  "$env:LOCALAPPDATA\Cursor",
+  "$env:LOCALAPPDATA\Programs\Cursor",
+  "$env:ProgramFiles\Cursor",
+  "$env:ProgramFiles(x86)\Cursor",
+  "$env:APPDATA\Cursor",
     "$env:UserProfile\.cursor",
     "$env:UserProfile\ai-dev-platform",
     "$env:UserProfile\.pnpm-store",
