@@ -2815,10 +2815,12 @@ if (-not $SkipSetupAll) {
     if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")) -and
         [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process"))) {
         Write-Section "GitHub personal access token"
-        Write-Host "Create a GitHub Personal Access Token with scopes: repo, workflow" -ForegroundColor Yellow
-        Write-Host "Add admin:org if you administer the repository's organization." -ForegroundColor Yellow
-        Write-Host "Generate it at https://github.com/settings/tokens, then paste it at the prompt below." -ForegroundColor Yellow
-        Write-Host "Tip: set GH_TOKEN in advance (e.g., 'setx GH_TOKEN <token>' on Windows) to skip this prompt next time." -ForegroundColor Yellow
+        Write-Host "To allow automated repo hardening:" -ForegroundColor Yellow
+        Write-Host "  1. Visit https://github.com/settings/personal-access-tokens/new (Settings → Developer settings → Personal access tokens → Tokens (classic))." -ForegroundColor Yellow
+        Write-Host "  2. Name it 'ai-dev-platform bootstrap', choose an expiration, and check scopes: repo, workflow." -ForegroundColor Yellow
+        Write-Host "  3. If you administer the organization's repo, also check admin:org." -ForegroundColor Yellow
+        Write-Host "  4. Click Generate token, copy it immediately, then paste it at the prompt below." -ForegroundColor Yellow
+        Write-Host "Tip: set GH_TOKEN ahead of time (e.g., 'setx GH_TOKEN <token>' in PowerShell) to reuse it automatically." -ForegroundColor Yellow
     }
     $ghTokenAdded = Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage "Optional GitHub token (scopes: repo,workflow; add admin:org for org repos)"
     $infTokenAdded = Prompt-OptionalToken -EnvName "INFISICAL_TOKEN" -PromptMessage "Optional Infisical token"
