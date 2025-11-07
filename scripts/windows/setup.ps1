@@ -1309,12 +1309,21 @@ function Ensure-Cursor {
         Write-CursorLog ("Cursor already installed at {0}" -f $existingPath)
         return
     }
+    $runningElevated = Test-IsAdministrator
     if ($CursorInstallerPath) {
         Write-Host "Using provided Cursor installer path '$CursorInstallerPath'."
         if (Install-CursorFromPath -Path $CursorInstallerPath -ExpectedVersion $null -ExpectedInstallPath $cursorPath) {
             return
         }
         Write-Warning "Custom Cursor installer failed. Falling back to automated options."
+    }
+    if ($runningElevated) {
+        Write-Host "Running in elevated mode; skipping winget and downloading Cursor installer directly." -ForegroundColor Yellow
+        $fallbackInstalled = Install-CursorViaDownload -ExpectedPath $cursorPath
+        if (-not $fallbackInstalled) {
+            Write-Warning "Cursor installation could not be automated. Install Cursor manually from https://cursor.com/download and rerun this script."
+        }
+        return
     }
     try {
         Ensure-Winget
