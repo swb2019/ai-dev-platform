@@ -2683,6 +2683,10 @@ function Get-WslEnvPrefix {
         $escaped = $env:GH_TOKEN.Replace("'", "'\\''")
         $lines += "export GH_TOKEN='$escaped'"
     }
+    if ($env:SETUP_GITHUB_TOKEN) {
+        $escapedSetup = $env:SETUP_GITHUB_TOKEN.Replace("'", "'\\''")
+        $lines += "export SETUP_GITHUB_TOKEN='$escapedSetup'"
+    }
     if ($env:INFISICAL_TOKEN) {
         $escapedInf = $env:INFISICAL_TOKEN.Replace("'", "'\\''")
         $lines += "export INFISICAL_TOKEN='$escapedInf'"
@@ -2812,6 +2816,9 @@ if (-not $SkipDockerInstall) {
 Ensure-Repository
 
 if (-not $SkipSetupAll) {
+    $setupTokenExisting = [Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process")
+    $setupTokenWasEmpty = [string]::IsNullOrWhiteSpace($setupTokenExisting)
+    $setupGithubTokenAdded = $false
     if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")) -and
         [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process"))) {
         Write-Section "GitHub personal access token"
@@ -2823,9 +2830,17 @@ if (-not $SkipSetupAll) {
         Write-Host "Tip: set GH_TOKEN ahead of time (e.g., 'setx GH_TOKEN <token>' in PowerShell) to reuse it automatically." -ForegroundColor Yellow
     }
     $ghTokenAdded = Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage "Optional GitHub token (scopes: repo,workflow; add admin:org for org repos)"
+    if ($ghTokenAdded -and $setupTokenWasEmpty) {
+        $ghValue = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
+        if (-not [string]::IsNullOrWhiteSpace($ghValue)) {
+            [Environment]::SetEnvironmentVariable("SETUP_GITHUB_TOKEN", $ghValue, "Process")
+            $setupGithubTokenAdded = $true
+        }
+    }
     $infTokenAdded = Prompt-OptionalToken -EnvName "INFISICAL_TOKEN" -PromptMessage "Optional Infisical token"
     Run-SetupAll
     if ($ghTokenAdded) { Remove-Item -Path Env:GH_TOKEN -ErrorAction SilentlyContinue }
+    if ($setupGithubTokenAdded) { Remove-Item -Path Env:SETUP_GITHUB_TOKEN -ErrorAction SilentlyContinue }
     if ($infTokenAdded) { Remove-Item -Path Env:INFISICAL_TOKEN -ErrorAction SilentlyContinue }
 }
 
