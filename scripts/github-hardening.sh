@@ -153,6 +153,7 @@ maybe_login_with_token() {
     return 1
   fi
   TOKEN_LOGIN_ATTEMPTED=1
+  gh auth logout --hostname github.com >/dev/null 2>&1 || true
   if printf '%s\n' "$token" | gh auth login --hostname github.com --git-protocol https --with-token >/dev/null 2>&1; then
     record_gh_user
     if [[ -n "$GH_USER" ]]; then
