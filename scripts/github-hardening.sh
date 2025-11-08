@@ -308,10 +308,8 @@ require_gh() {
   local attempt=1
   local auto_mode="${WINDOWS_AUTOMATED_SETUP:-0}"
   while (( attempt <= 2 )); do
-    if ! gh auth status >/dev/null 2>&1; then
-      maybe_login_with_token >/dev/null 2>&1 || true
-    fi
-
+    maybe_login_with_token >/dev/null 2>&1 || true
+    if gh auth status >/dev/null 2>&1; then
     if gh auth status >/dev/null 2>&1; then
       record_gh_user
       if ensure_gh_scopes && ensure_repo_admin_access; then
