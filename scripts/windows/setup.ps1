@@ -429,6 +429,21 @@ function Wait-ForCursorInstallation {
     return $false
 }
 
+function Ensure-WslEnvPassthrough {
+    param([string]$VariableName)
+    if ([string]::IsNullOrWhiteSpace($VariableName)) { return }
+    $current = [Environment]::GetEnvironmentVariable('WSLENV','Process')
+    $parts = @()
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
+        $parts = $current -split ';' | Where-Object { $_ }
+    }
+    $entry = "$VariableName/p"
+    if ($parts -notcontains $entry) {
+        $parts += $entry
+        [Environment]::SetEnvironmentVariable('WSLENV', ($parts -join ';'), 'Process')
+    }
+}
+
 function Clear-FileZoneMarker {
     param([string]$Path,[string]$LogLabel = "file")
     if ([string]::IsNullOrWhiteSpace($Path)) {
@@ -2600,14 +2615,7 @@ chmod +x /tmp/open-in-windows.sh
                     return [PSCustomObject]@{ Completed = $false; GeneratedInfisical = $false }
                 }
             }
-            $wslenvParts = @()
-            if (-not [string]::IsNullOrWhiteSpace($previousWslenv)) {
-                $wslenvParts = $previousWslenv -split ';' | Where-Object { $_ -ne '' }
-            }
-            if ($wslenvParts -notcontains 'INFISICAL_TOKEN/p') {
-                $wslenvParts += 'INFISICAL_TOKEN/p'
-            }
-            [Environment]::SetEnvironmentVariable('WSLENV', ($wslenvParts -join ';'), 'Process')
+            Ensure-WslEnvPassthrough -VariableName 'INFISICAL_TOKEN'
         }
 
         Write-Section "Google Cloud CLI authentication"
@@ -2839,14 +2847,20 @@ if (-not $SkipSetupAll) {
         Write-Host "Tip: set GH_TOKEN ahead of time (e.g., 'setx GH_TOKEN <token>' in PowerShell) to reuse it automatically." -ForegroundColor Yellow
     }
     $ghTokenAdded = Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage "Optional GitHub token (scopes: repo,workflow; add admin:org for org repos)"
-    if ($ghTokenAdded -and $setupTokenWasEmpty) {
-        $ghValue = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
-        if (-not [string]::IsNullOrWhiteSpace($ghValue)) {
-            [Environment]::SetEnvironmentVariable("SETUP_GITHUB_TOKEN", $ghValue, "Process")
-            $setupGithubTokenAdded = $true
-        }
-    }
     $infTokenAdded = Prompt-OptionalToken -EnvName "INFISICAL_TOKEN" -PromptMessage "Optional Infisical token"
+    $ghProcessToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
+    $setupProcessToken = [Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process")
+    if ($setupTokenWasEmpty -and (-not [string]::IsNullOrWhiteSpace($ghProcessToken))) {
+        [Environment]::SetEnvironmentVariable("SETUP_GITHUB_TOKEN", $ghProcessToken, 'Process')
+        $setupProcessToken = $ghProcessToken
+        $setupGithubTokenAdded = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ghProcessToken)) {
+        Ensure-WslEnvPassthrough -VariableName 'GH_TOKEN'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($setupProcessToken)) {
+        Ensure-WslEnvPassthrough -VariableName 'SETUP_GITHUB_TOKEN'
+    }
     Run-SetupAll
     if ($ghTokenAdded) { Remove-Item -Path Env:GH_TOKEN -ErrorAction SilentlyContinue }
     if ($setupGithubTokenAdded) { Remove-Item -Path Env:SETUP_GITHUB_TOKEN -ErrorAction SilentlyContinue }
