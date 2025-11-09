@@ -386,20 +386,29 @@ function Confirm-CursorInstallation {
 function Start-ProcessNonElevated {
     param(
         [string]$FilePath,
-        [string[]]$ArgumentList,
+        $ArgumentList,
         [string]$WorkingDirectory
     )
     $shell = New-Object -ComObject Shell.Application
     if (-not $shell) {
         throw "Shell.Application COM object unavailable."
     }
-    $argumentItems = @()
+
+    $arguments = ""
     if ($null -ne $ArgumentList) {
-        $argumentItems = @(
-            @($ArgumentList) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-        )
+        if ($ArgumentList -is [System.Collections.IEnumerable] -and -not ($ArgumentList -is [string])) {
+            $arguments = ($ArgumentList | ForEach-Object {
+                if ($_ -is [string]) {
+                    $_
+                } elseif ($null -ne $_) {
+                    $_.ToString()
+                }
+            } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join " "
+        } elseif (-not [string]::IsNullOrWhiteSpace([string]$ArgumentList)) {
+            $arguments = [string]$ArgumentList
+        }
     }
-    $arguments = if ($argumentItems.Length -gt 0) { $argumentItems -join " " } else { "" }
+
     if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         try {
             $WorkingDirectory = Split-Path -Path $FilePath -Parent
