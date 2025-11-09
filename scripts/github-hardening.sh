@@ -182,8 +182,12 @@ has_required_scopes() {
 }
 
 ensure_gh_scopes() {
+  local allow_refresh="${1:-1}"
   if has_required_scopes; then
     return 0
+  fi
+  if [[ "$allow_refresh" != "1" ]]; then
+    return 1
   fi
   echo "Ensuring GitHub CLI token has scopes: $REQUIRED_SCOPE_LIST" >&2
   gh auth refresh --hostname github.com --scopes "$REQUIRED_SCOPE_LIST" >/dev/null 2>&1 || return 1
@@ -307,11 +311,15 @@ require_gh() {
 
   local attempt=1
   local auto_mode="${WINDOWS_AUTOMATED_SETUP:-0}"
+  local allow_scope_refresh="1"
+  if [[ "$auto_mode" == "1" ]]; then
+    allow_scope_refresh="0"
+  fi
   while (( attempt <= 2 )); do
     maybe_login_with_token >/dev/null 2>&1 || true
     if gh auth status >/dev/null 2>&1; then
       record_gh_user
-      if ensure_gh_scopes && ensure_repo_admin_access; then
+      if ensure_gh_scopes "$allow_scope_refresh" && ensure_repo_admin_access; then
         clear_pending_notice
         if [[ -n "$GH_USER" ]]; then
           echo "GitHub CLI authenticated as $GH_USER with admin access to ${FULL_REPO}."
@@ -321,16 +329,27 @@ require_gh() {
         return 0
       fi
 
-      echo "GitHub token lacks required scopes or administrator rights; attempting to refresh." >&2
-      ensure_gh_scopes >/dev/null 2>&1 || true
+      if [[ "$allow_scope_refresh" == "1" ]]; then
+        echo "GitHub token lacks required scopes or administrator rights; attempting to refresh." >&2
+      else
+        echo "GitHub token lacks required scopes or administrator rights, and automated bootstrap cannot refresh credentials interactively." >&2
+      fi
+      if [[ "$allow_scope_refresh" == "1" ]]; then
+        ensure_gh_scopes >/dev/null 2>&1 || true
 
-      if ensure_gh_scopes && ensure_repo_admin_access; then
-        clear_pending_notice
-        echo "GitHub CLI authentication detected. Continuing repository hardening."
-        return 0
+        if ensure_gh_scopes && ensure_repo_admin_access; then
+          clear_pending_notice
+          echo "GitHub CLI authentication detected. Continuing repository hardening."
+          return 0
+        fi
       fi
 
       write_pending_notice
+      if [[ "$allow_scope_refresh" != "1" ]]; then
+        echo "Skipping GitHub repository hardening because the provided GH_TOKEN lacks required scopes (${REQUIRED_SCOPE_LIST}) or admin rights." >&2
+        echo "Generate a token with those scopes (and admin permissions if this is an organisation repo), set GH_TOKEN, then rerun the bootstrap." >&2
+        return "$HARDENING_SKIPPED_EXIT_CODE"
+      fi
       echo "Skipping GitHub repository hardening. Run ./scripts/github-hardening.sh after granting the required access." >&2
       return "$HARDENING_SKIPPED_EXIT_CODE"
     fi
