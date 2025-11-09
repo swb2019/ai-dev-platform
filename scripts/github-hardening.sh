@@ -310,7 +310,6 @@ require_gh() {
   while (( attempt <= 2 )); do
     maybe_login_with_token >/dev/null 2>&1 || true
     if gh auth status >/dev/null 2>&1; then
-    if gh auth status >/dev/null 2>&1; then
       record_gh_user
       if ensure_gh_scopes && ensure_repo_admin_access; then
         clear_pending_notice
