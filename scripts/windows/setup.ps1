@@ -393,7 +393,19 @@ function Start-ProcessNonElevated {
     if (-not $shell) {
         throw "Shell.Application COM object unavailable."
     }
-    $arguments = if ($ArgumentList -and $ArgumentList.Count -gt 0) { $ArgumentList -join " " } else { "" }
+    $argumentsArray = @()
+    if ($null -ne $ArgumentList) {
+        if ($ArgumentList -is [System.Collections.IEnumerable] -and -not ($ArgumentList -is [string])) {
+            foreach ($item in $ArgumentList) {
+                if (-not [string]::IsNullOrWhiteSpace($item)) {
+                    $argumentsArray += $item
+                }
+            }
+        } elseif (-not [string]::IsNullOrWhiteSpace($ArgumentList)) {
+            $argumentsArray = @("$ArgumentList")
+        }
+    }
+    $arguments = if ($argumentsArray.Count -gt 0) { $argumentsArray -join " " } else { "" }
     if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         try {
             $WorkingDirectory = Split-Path -Path $FilePath -Parent
