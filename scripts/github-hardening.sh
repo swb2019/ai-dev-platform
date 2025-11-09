@@ -84,6 +84,9 @@ load_config_if_present() {
     source "$path"
   fi
 }
+
+CONFIG_OWNER_DEFAULT="$OWNER"
+CONFIG_REPO_DEFAULT="$REPO"
 heading() {
   printf '\n==> %s\n' "$1"
 }
@@ -259,8 +262,31 @@ parse_args() {
     esac
   done
 
+  local inferred_owner=""
+  local inferred_repo=""
+  local saved_owner="$OWNER"
+  local saved_repo="$REPO"
+  if infer_repo_from_git >/dev/null 2>&1; then
+    inferred_owner="$OWNER"
+    inferred_repo="$REPO"
+  fi
+  OWNER="$saved_owner"
+  REPO="$saved_repo"
+
   if [[ -z "$OWNER" || -z "$REPO" ]]; then
-    infer_repo_from_git || true
+    if [[ -n "$inferred_owner" && -n "$inferred_repo" ]]; then
+      OWNER="$inferred_owner"
+      REPO="$inferred_repo"
+    else
+      infer_repo_from_git || true
+    fi
+  elif [[ "${GITHUB_HARDENING_PREFER_REMOTE:-1}" == "1" && -n "$inferred_owner" && -n "$inferred_repo" ]]; then
+    local config_slug="${CONFIG_OWNER_DEFAULT:-}/${CONFIG_REPO_DEFAULT:-}"
+    local current_slug="${OWNER}/${REPO}"
+    if [[ -z "$config_slug" || "$current_slug" == "$config_slug" ]]; then
+      OWNER="$inferred_owner"
+      REPO="$inferred_repo"
+    fi
   fi
 
   if [[ -z "$OWNER" || -z "$REPO" ]]; then
