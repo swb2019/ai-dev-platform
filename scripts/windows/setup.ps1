@@ -429,6 +429,41 @@ function Wait-ForCursorInstallation {
     return $false
 }
 
+function Get-CursorInstallerProcesses {
+    try {
+        return @(Get-Process -Name "Cursor*Setup*" -ErrorAction Stop)
+    } catch {
+        return @()
+    }
+}
+
+function Wait-ForWingetCursorInstaller {
+    param(
+        [string]$ExpectedPath,
+        [int]$TimeoutSeconds = 900
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ($ExpectedPath -and (Test-Path $ExpectedPath)) {
+            return [pscustomobject]@{ Completed = $true; InstallerActive = $false }
+        }
+        $installPath = Get-CursorInstallPath
+        if ($installPath) {
+            return [pscustomobject]@{ Completed = $true; InstallerActive = $false }
+        }
+        $installerProcesses = Get-CursorInstallerProcesses
+        if (-not $installerProcesses -or $installerProcesses.Count -eq 0) {
+            return [pscustomobject]@{ Completed = $false; InstallerActive = $false }
+        }
+        Start-Sleep -Seconds 5
+    }
+    $stillRunning = Get-CursorInstallerProcesses
+    return [pscustomobject]@{
+        Completed = $false
+        InstallerActive = ($stillRunning -and $stillRunning.Count -gt 0)
+    }
+}
+
 function Ensure-WslEnvPassthrough {
     param([string]$VariableName)
     if ([string]::IsNullOrWhiteSpace($VariableName)) { return }
@@ -1380,16 +1415,32 @@ function Ensure-Cursor {
     $proc = Start-Process -FilePath "winget" -ArgumentList $arguments -NoNewWindow -Wait -PassThru
     switch ($proc.ExitCode) {
         0 {
-            if (Confirm-CursorInstallation -ExpectedVersion $null -ExpectedPath $cursorPath) {
-                $postInstallPath = Get-CursorInstallPath
-                if ($postInstallPath) {
-                    Write-Host "Cursor installation completed successfully at $postInstallPath."
-                    Write-CursorLog ("Cursor installed via winget at {0}" -f $postInstallPath)
-                    return
+            while ($true) {
+                $wingetMonitor = Wait-ForWingetCursorInstaller -ExpectedPath $cursorPath -TimeoutSeconds 300
+                if ($wingetMonitor.Completed) {
+                    if (Confirm-CursorInstallation -ExpectedVersion $null -ExpectedPath $cursorPath) {
+                        $postInstallPath = Get-CursorInstallPath
+                        if ($postInstallPath) {
+                            Write-Host "Cursor installation completed successfully at $postInstallPath."
+                            Write-CursorLog ("Cursor installed via winget at {0}" -f $postInstallPath)
+                            return
+                        }
+                    }
+                    break
                 }
-            } else {
-                Write-Warning "Cursor installer reported success but $cursorPath was not found. Attempting direct-download fallback."
+                if (-not $wingetMonitor.InstallerActive) {
+                    break
+                }
+                Write-Warning "Cursor setup launched by winget is still running. Complete the open installer window before this script can continue."
+                Write-CursorLog "Winget Cursor installer still active; prompting user to finish it before continuing."
+                try {
+                    $null = Read-Host "Press Enter after the Cursor installer window has closed"
+                } catch {
+                    # ignore input failures; loop will re-check automatically
+                }
             }
+            Write-Warning "Cursor installer reported success but $cursorPath was not detected. Attempting direct-download fallback."
+            Write-CursorLog "Winget reported success but Cursor.exe was still missing; invoking download fallback."
         }
         3010 {
             Write-Warning "Cursor installation signaled a reboot requirement. Restart Windows to finish installation, then rerun this script if needed."
