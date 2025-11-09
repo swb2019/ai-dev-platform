@@ -394,20 +394,24 @@ function Start-ProcessNonElevated {
         throw "Shell.Application COM object unavailable."
     }
 
-    $arguments = ""
+    $argumentBuffer = New-Object System.Collections.Generic.List[string]
     if ($null -ne $ArgumentList) {
         if ($ArgumentList -is [System.Collections.IEnumerable] -and -not ($ArgumentList -is [string])) {
-            $arguments = ($ArgumentList | ForEach-Object {
-                if ($_ -is [string]) {
-                    $_
-                } elseif ($null -ne $_) {
-                    $_.ToString()
+            foreach ($item in $ArgumentList) {
+                if ($null -eq $item) { continue }
+                $text = [string]$item
+                if (-not [string]::IsNullOrWhiteSpace($text)) {
+                    $null = $argumentBuffer.Add($text)
                 }
-            } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join " "
-        } elseif (-not [string]::IsNullOrWhiteSpace([string]$ArgumentList)) {
-            $arguments = [string]$ArgumentList
+            }
+        } else {
+            $text = [string]$ArgumentList
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                $null = $argumentBuffer.Add($text)
+            }
         }
     }
+    $arguments = if ($argumentBuffer.Count -gt 0) { [string]::Join(" ", $argumentBuffer) } else { "" }
 
     if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         try {
