@@ -529,14 +529,18 @@ function Wait-ForProcessExitByPath {
     $escaped = $fullPath.Replace("\", "\\")
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
-        $processes = @()
+        $processesList = New-Object System.Collections.Generic.List[object]
         try {
-            $processes = @(Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'")
+            $rawProcesses = Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'"
         } catch {
-            $processes = @()
+            $rawProcesses = @()
         }
-        $processes = $processes | Where-Object { $_ }
-        if (-not $processes -or $processes.Count -eq 0) {
+        foreach ($proc in @($rawProcesses)) {
+            if ($null -ne $proc) {
+                $null = $processesList.Add($proc)
+            }
+        }
+        if ($processesList.Count -eq 0) {
             return $true
         }
         Start-Sleep -Seconds 3
