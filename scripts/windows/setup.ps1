@@ -56,6 +56,21 @@ if ([string]::IsNullOrWhiteSpace($RepoSlug) -or (-not $RepoSlug.Contains("/"))) 
 $env:AI_DEV_PLATFORM_SANDBOX_REPO = $RepoSlug
 Ensure-WslEnvPassthrough -VariableName 'AI_DEV_PLATFORM_SANDBOX_REPO'
 
+function Ensure-WslEnvPassthrough {
+    param([string]$VariableName)
+    if ([string]::IsNullOrWhiteSpace($VariableName)) { return }
+    $current = [Environment]::GetEnvironmentVariable('WSLENV','Process')
+    $parts = @()
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
+        $parts = $current -split ';' | Where-Object { $_ }
+    }
+    $entry = "$VariableName/p"
+    if ($parts -notcontains $entry) {
+        $parts += $entry
+        [Environment]::SetEnvironmentVariable('WSLENV', ($parts -join ';'), 'Process')
+    }
+}
+
 if ($DistroName.StartsWith("[") -or $DistroName.StartsWith("-")) {
     Write-Warning "Received DistroName '$DistroName'; resetting to 'Ubuntu'. Use -DistroName if you need a custom image."
     $DistroName = "Ubuntu"
@@ -502,21 +517,6 @@ function Wait-ForWingetCursorInstaller {
     return [pscustomobject]@{
         Completed = $false
         InstallerActive = ($stillRunning -and $stillRunning.Count -gt 0)
-    }
-}
-
-function Ensure-WslEnvPassthrough {
-    param([string]$VariableName)
-    if ([string]::IsNullOrWhiteSpace($VariableName)) { return }
-    $current = [Environment]::GetEnvironmentVariable('WSLENV','Process')
-    $parts = @()
-    if (-not [string]::IsNullOrWhiteSpace($current)) {
-        $parts = $current -split ';' | Where-Object { $_ }
-    }
-    $entry = "$VariableName/p"
-    if ($parts -notcontains $entry) {
-        $parts += $entry
-        [Environment]::SetEnvironmentVariable('WSLENV', ($parts -join ';'), 'Process')
     }
 }
 
