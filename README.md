@@ -172,7 +172,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -Fo
 
 > Persist it with `setx AI_DEV_PLATFORM_SANDBOX_REPO your-user/ai-dev-platform-sandbox` so every PowerShell session (and the Windows bootstrap) automatically targets your fork. If the env var is missing, `scripts/windows/setup.ps1` now prompts you interactively for the slug (defaulting to upstream), so the bootstrap remains seamless even on fresh machines.
 
-> **GitHub token tip:** The Windows bootstrap now validates `GH_TOKEN` before running any WSL setup. Paste a classic PAT that includes `repo` and `workflow` scopes for personal repositories; if the repo lives in an organization you administer, `admin:org` and administrator rights are required too. The helper will keep prompting until the token passes those checks, so the later GitHub hardening step never fails mid-run.
+> **GitHub token tip:** The Windows bootstrap now validates `GH_TOKEN` before running any WSL setup. Paste a classic PAT that includes `repo` and `workflow` scopes for personal repositories; if the repo lives in an organization you administer, `admin:org` and administrator rights are required too. The helper will keep prompting until the token passes those checks, then automatically logs `gh` inside WSL with that token so the later GitHub hardening step never fails mid-run.
 
 Need a fresh fork for testing? Run this one-liner (requires a PAT with `delete_repo` scope) and it will delete the old fork, recreate it privately, reclone it, and sync it—all with a single command:
 
