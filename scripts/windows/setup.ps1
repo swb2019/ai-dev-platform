@@ -3113,56 +3113,57 @@ function Ensure-WslGithubAuthentication {
     $scopeLiteral = $lowerScopes -join ' '
     $repoLiteral = $RepoSlug
 
-    $script = @"
+    $scriptTemplate = @'
 set -euo pipefail
 if ! command -v gh >/dev/null 2>&1; then
   echo "GitHub CLI is not installed inside WSL." >&2
   exit 1
 fi
-if [ -z "\${GH_TOKEN:-}" ]; then
+if [ -z "${GH_TOKEN:-}" ]; then
   echo "GH_TOKEN is empty inside WSL; cannot authenticate GitHub CLI." >&2
   exit 1
 fi
 gh auth logout --hostname github.com >/dev/null 2>&1 || true
-if ! printf '%s\n' "\$GH_TOKEN" | gh auth login --hostname github.com --git-protocol https --with-token >/dev/null 2>&1; then
+if ! printf '%s\n' "$GH_TOKEN" | gh auth login --hostname github.com --git-protocol https --with-token >/dev/null 2>&1; then
   echo "Unable to authenticate GitHub CLI inside WSL using GH_TOKEN." >&2
   exit 2
 fi
-scopes_line="\$(gh auth status --hostname github.com 2>&1 | grep -im1 'scopes:' || true)"
-scope_blob="\$(printf '%s' "\$scopes_line" | cut -d':' -f2- | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
-normalized="\$(printf '%s' "\$scope_blob" | tr ',' ' ')"
+scopes_line="$(gh auth status --hostname github.com 2>&1 | grep -im1 'scopes:' || true)"
+scope_blob="$(printf '%s' "$scopes_line" | cut -d':' -f2- | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+normalized="$(printf '%s' "$scope_blob" | tr ',' ' ')"
 missing=""
-for required in $scopeLiteral; do
-  if [ -z "\$required" ]; then
+for required in __REQUIRED_SCOPES__; do
+  if [ -z "$required" ]; then
     continue
   fi
   found=0
-  for entry in \$normalized; do
-    if [ "\$entry" = "\$required" ]; then
+  for entry in $normalized; do
+    if [ "$entry" = "$required" ]; then
       found=1
       break
     fi
   done
-  if [ \$found -ne 1 ]; then
-    if [ -z "\$missing" ]; then
-      missing="\$required"
+  if [ $found -ne 1 ]; then
+    if [ -z "$missing" ]; then
+      missing="$required"
     else
-      missing="\$missing, \$required"
+      missing="$missing, $required"
     fi
   fi
 done
-if [ -n "\$missing" ]; then
-  echo "GitHub CLI session in WSL is missing scope(s): \$missing." >&2
+if [ -n "$missing" ]; then
+  echo "GitHub CLI session in WSL is missing scope(s): $missing." >&2
   exit 3
 fi
-if ! gh api "repos/$repoLiteral" --jq '.permissions.admin' >/dev/null 2>&1; then
-  echo "GitHub CLI authenticated user lacks administrator rights on $repoLiteral." >&2
+if ! gh api "repos/__REPO_SLUG__" --jq '.permissions.admin' >/dev/null 2>&1; then
+  echo "GitHub CLI authenticated user lacks administrator rights on __REPO_SLUG__." >&2
   exit 4
 fi
 exit 0
-"@
+'@
 
-    $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script.Replace("`r",""))
+    $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral)
+    $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script)
     $scriptBase64 = [Convert]::ToBase64String($scriptBytes)
     $commands = @()
     $envPrefix = Get-WslEnvPrefix
