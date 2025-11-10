@@ -8,6 +8,8 @@
 
 set -euo pipefail
 
+DEFAULT_UPSTREAM_OWNER="swb2019"
+DEFAULT_UPSTREAM_REPO="ai-dev-platform"
 OWNER=""
 REPO=""
 PROTECTED_BRANCH="main"
@@ -87,6 +89,28 @@ load_config_if_present() {
 
 CONFIG_OWNER_DEFAULT="$OWNER"
 CONFIG_REPO_DEFAULT="$REPO"
+
+ALLOW_OWNER_SWITCH="${GITHUB_HARDENING_ALLOW_OWNER_SWITCH:-}"
+if [[ -z "$ALLOW_OWNER_SWITCH" ]]; then
+  if [[ -z "$CONFIG_OWNER_DEFAULT" || "${CONFIG_OWNER_DEFAULT,,}" == "${DEFAULT_UPSTREAM_OWNER,,}" ]]; then
+    ALLOW_OWNER_SWITCH=1
+  else
+    ALLOW_OWNER_SWITCH=0
+  fi
+fi
+
+set_target_repo() {
+  local new_owner="$1"
+  local new_repo="$2"
+  if [[ -z "$new_owner" || -z "$new_repo" ]]; then
+    return 1
+  fi
+  OWNER="$new_owner"
+  REPO="$new_repo"
+  FULL_REPO="${OWNER}/${REPO}"
+  detect_owner_type
+  return 0
+}
 heading() {
   printf '\n==> %s\n' "$1"
 }
@@ -201,6 +225,26 @@ ensure_repo_admin_access() {
   local has_admin
   has_admin=$(gh api "repos/${FULL_REPO}" --jq '.permissions.admin' 2>/dev/null) || return 1
   [[ "$has_admin" == "true" ]]
+}
+
+try_switch_to_user_repo() {
+  if [[ "${ALLOW_OWNER_SWITCH:-0}" != "1" ]]; then
+    return 1
+  fi
+  if [[ -z "$GH_USER" || -z "$REPO" ]]; then
+    return 1
+  fi
+  local candidate_owner="$GH_USER"
+  local candidate_slug="${candidate_owner}/${REPO}"
+  if [[ "${candidate_slug,,}" == "${FULL_REPO,,}" ]]; then
+    return 1
+  fi
+  if gh api "repos/${candidate_slug}" --jq '.name' >/dev/null 2>&1; then
+    echo "GitHub CLI has admin access to ${candidate_slug}; switching repository target."
+    set_target_repo "$candidate_owner" "$REPO" || return 1
+    return 0
+  fi
+  return 1
 }
 
 record_gh_user() {
@@ -355,6 +399,12 @@ require_gh() {
         return 0
       fi
 
+      if try_switch_to_user_repo && ensure_repo_admin_access; then
+        clear_pending_notice
+        echo "GitHub CLI authentication detected. Continuing repository hardening."
+        return 0
+      fi
+
       if [[ "$allow_scope_refresh" == "1" ]]; then
         echo "GitHub token lacks required scopes or administrator rights; attempting to refresh." >&2
       else
@@ -364,6 +414,11 @@ require_gh() {
         ensure_gh_scopes >/dev/null 2>&1 || true
 
         if ensure_gh_scopes && ensure_repo_admin_access; then
+          clear_pending_notice
+          echo "GitHub CLI authentication detected. Continuing repository hardening."
+          return 0
+        fi
+        if try_switch_to_user_repo && ensure_repo_admin_access; then
           clear_pending_notice
           echo "GitHub CLI authentication detected. Continuing repository hardening."
           return 0
@@ -594,8 +649,10 @@ delete_environment_if_exists() {
 main() {
   load_config_if_present
   parse_args "$@"
-  FULL_REPO="${OWNER}/${REPO}"
-  detect_owner_type
+  if ! set_target_repo "$OWNER" "$REPO"; then
+    echo "Unable to determine repository owner/name after parsing arguments." >&2
+    exit 1
+  fi
 
   require_gh
   status=$?
