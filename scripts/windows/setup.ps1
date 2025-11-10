@@ -3089,6 +3089,96 @@ function Ensure-GitHubTokenReady {
     }
 }
 
+function Ensure-WslGithubAuthentication {
+    param(
+        [string]$RepoSlug,
+        [string[]]$RequiredScopes
+    )
+
+    $ghToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
+    if ([string]::IsNullOrWhiteSpace($ghToken)) {
+        Write-Warning "GH_TOKEN is not set; skipping WSL GitHub CLI authentication bootstrap."
+        return
+    }
+
+    $lowerScopes = @()
+    foreach ($scope in $RequiredScopes) {
+        if (-not [string]::IsNullOrWhiteSpace($scope)) {
+            $lowerScopes += $scope.ToLowerInvariant()
+        }
+    }
+    if ($lowerScopes.Count -eq 0) {
+        $lowerScopes = @('repo','workflow')
+    }
+    $scopeLiteral = $lowerScopes -join ' '
+    $repoLiteral = $RepoSlug
+
+    $script = @"
+set -euo pipefail
+if ! command -v gh >/dev/null 2>&1; then
+  echo "GitHub CLI is not installed inside WSL." >&2
+  exit 1
+fi
+if [ -z "\${GH_TOKEN:-}" ]; then
+  echo "GH_TOKEN is empty inside WSL; cannot authenticate GitHub CLI." >&2
+  exit 1
+fi
+gh auth logout --hostname github.com >/dev/null 2>&1 || true
+if ! printf '%s\n' "\$GH_TOKEN" | gh auth login --hostname github.com --git-protocol https --with-token >/dev/null 2>&1; then
+  echo "Unable to authenticate GitHub CLI inside WSL using GH_TOKEN." >&2
+  exit 2
+fi
+scopes_line="\$(gh auth status --hostname github.com 2>&1 | grep -im1 'scopes:' || true)"
+scope_blob="\$(printf '%s' "\$scopes_line" | cut -d':' -f2- | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+normalized="\$(printf '%s' "\$scope_blob" | tr ',' ' ')"
+missing=""
+for required in $scopeLiteral; do
+  if [ -z "\$required" ]; then
+    continue
+  fi
+  found=0
+  for entry in \$normalized; do
+    if [ "\$entry" = "\$required" ]; then
+      found=1
+      break
+    fi
+  done
+  if [ \$found -ne 1 ]; then
+    if [ -z "\$missing" ]; then
+      missing="\$required"
+    else
+      missing="\$missing, \$required"
+    fi
+  fi
+done
+if [ -n "\$missing" ]; then
+  echo "GitHub CLI session in WSL is missing scope(s): \$missing." >&2
+  exit 3
+fi
+if ! gh api "repos/$repoLiteral" --jq '.permissions.admin' >/dev/null 2>&1; then
+  echo "GitHub CLI authenticated user lacks administrator rights on $repoLiteral." >&2
+  exit 4
+fi
+exit 0
+"@
+
+    $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script.Replace("`r",""))
+    $scriptBase64 = [Convert]::ToBase64String($scriptBytes)
+    $commands = @()
+    $envPrefix = Get-WslEnvPrefix
+    if ($envPrefix) {
+        $commands += $envPrefix
+    }
+    $commands += "base64 -d <<'__WSLGH__' | bash"
+    $commands += $scriptBase64
+    $commands += "__WSLGH__"
+    $command = ($commands -join '; ')
+    $result = Invoke-Wsl -Command $command
+    if ($result.ExitCode -ne 0) {
+        throw "Failed to configure GitHub CLI authentication inside WSL (exit $($result.ExitCode)). Ensure the provided token has all required scopes and administrator access to $RepoSlug."
+    }
+}
+
 Write-Section "Windows bootstrap for AI Dev Platform"
 Test-NetworkConnectivity
 Ensure-Administrator
@@ -3140,6 +3230,7 @@ if (-not $SkipSetupAll) {
     }
     if (-not [string]::IsNullOrWhiteSpace($ghProcessToken)) {
         Ensure-WslEnvPassthrough -VariableName 'GH_TOKEN'
+        Ensure-WslGithubAuthentication -RepoSlug $RepoSlug -RequiredScopes $scopeRequirements.RequiredScopes
     }
     if (-not [string]::IsNullOrWhiteSpace($setupProcessToken)) {
         Ensure-WslEnvPassthrough -VariableName 'SETUP_GITHUB_TOKEN'
