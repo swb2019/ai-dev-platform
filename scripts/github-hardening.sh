@@ -195,15 +195,36 @@ maybe_login_with_token() {
 }
 
 has_required_scopes() {
-  local scopes_line scope
-  scopes_line="$(gh auth status --hostname github.com 2>&1 | grep -i '^Scopes:' || true)"
+  local scopes_line scope token
+  scopes_line="$(NO_COLOR=1 gh auth status --hostname github.com 2>&1 | grep -im1 'scopes:' || true)"
   if [[ -z "$scopes_line" ]]; then
     return 1
   fi
+
+  scopes_line="${scopes_line#*:}"
+  scopes_line="${scopes_line//$'\r'/}"
+  scopes_line="${scopes_line//\'/}"
+  scopes_line="$(trim "$scopes_line")"
+
+  local -a tokens=()
+  local -a normalized_scopes=()
+  local IFS=','
+  read -r -a tokens <<< "$scopes_line"
+  for token in "${tokens[@]}"; do
+    token="$(trim "$token")"
+    [[ -n "$token" ]] || continue
+    normalized_scopes+=("${token,,}")
+  done
+
   for scope in "${REQUIRED_SCOPES[@]}"; do
-    if ! [[ "$scopes_line" =~ (^|[[:space:],])$scope($|[[:space:],]) ]]; then
-      return 1
-    fi
+    local found=0
+    for token in "${normalized_scopes[@]}"; do
+      if [[ "$token" == "${scope,,}" ]]; then
+        found=1
+        break
+      fi
+    done
+    (( found )) || return 1
   done
   return 0
 }
@@ -407,10 +428,6 @@ require_gh() {
 
       if [[ "$allow_scope_refresh" == "1" ]]; then
         echo "GitHub token lacks required scopes or administrator rights; attempting to refresh." >&2
-      else
-        echo "GitHub token lacks required scopes or administrator rights, and automated bootstrap cannot refresh credentials interactively." >&2
-      fi
-      if [[ "$allow_scope_refresh" == "1" ]]; then
         ensure_gh_scopes >/dev/null 2>&1 || true
 
         if ensure_gh_scopes && ensure_repo_admin_access; then
@@ -423,12 +440,29 @@ require_gh() {
           echo "GitHub CLI authentication detected. Continuing repository hardening."
           return 0
         fi
+      else
+        # In automated mode, print the error message once and provide clear guidance
+        if [[ "$attempt" == "1" ]]; then
+          echo "GitHub token lacks required scopes or administrator rights, and automated bootstrap cannot refresh credentials interactively." >&2
+          echo "" >&2
+          echo "Required scopes: ${REQUIRED_SCOPE_LIST}" >&2
+          if [[ "$OWNER_TYPE" == "Organization" ]]; then
+            echo "Note: This is an organization repository. The token must also have admin:org scope and administrator access to the repository." >&2
+          fi
+          echo "" >&2
+          echo "To fix this:" >&2
+          echo "  1. Create a GitHub personal access token with the required scopes at:" >&2
+          echo "     https://github.com/settings/personal-access-tokens/new" >&2
+          echo "  2. Set it as GH_TOKEN before running the bootstrap:" >&2
+          echo "     On Windows: setx GH_TOKEN <token>" >&2
+          echo "     In WSL/Linux: export GH_TOKEN=<token>" >&2
+          echo "  3. Re-run the bootstrap script." >&2
+          echo "" >&2
+        fi
       fi
 
       write_pending_notice
       if [[ "$allow_scope_refresh" != "1" ]]; then
-        echo "Skipping GitHub repository hardening because the provided GH_TOKEN lacks required scopes (${REQUIRED_SCOPE_LIST}) or admin rights." >&2
-        echo "Generate a token with those scopes (and admin permissions if this is an organisation repo), set GH_TOKEN, then rerun the bootstrap." >&2
         return "$HARDENING_SKIPPED_EXIT_CODE"
       fi
       echo "Skipping GitHub repository hardening. Run ./scripts/github-hardening.sh after granting the required access." >&2
