@@ -40,6 +40,10 @@ if (-not $PSBoundParameters.ContainsKey('RepoSlug') -and -not [string]::IsNullOr
     Ensure-WslEnvPassthrough -VariableName 'AI_DEV_PLATFORM_SANDBOX_REPO'
 }
 
+if ([string]::IsNullOrWhiteSpace($RepoSlug)) {
+    throw "Repository slug is empty. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo (or pass -RepoSlug owner/repo) before running setup."
+}
+
 if ($DistroName.StartsWith("[") -or $DistroName.StartsWith("-")) {
     Write-Warning "Received DistroName '$DistroName'; resetting to 'Ubuntu'. Use -DistroName if you need a custom image."
     $DistroName = "Ubuntu"
