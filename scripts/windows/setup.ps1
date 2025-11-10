@@ -2553,7 +2553,7 @@ function Ensure-Repository {
     Write-Section "Cloning repository inside WSL"
     $escapedSlug = $RepoSlug.Replace('"','\"')
     $cloneScript = @"
-repo_slug="\${AI_DEV_PLATFORM_SANDBOX_REPO:-$escapedSlug}"
+repo_slug="`$\{AI_DEV_PLATFORM_SANDBOX_REPO:-$escapedSlug}"
 if [ -z "`$repo_slug" ]; then
   echo "Repository slug is empty inside WSL. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo before rerunning." >&2
   exit 129
