@@ -3171,7 +3171,7 @@ exit 0
         $commands += $envPrefix
     }
     $commands += 'tmp_script=$(mktemp /tmp/ai-dev-gh-auth.XXXXXX.sh)'
-    $commands += "printf '%s' '$scriptBase64' | base64 -d > \"\$tmp_script\""
+    $commands += ('printf ''%s'' ''{0}'' | base64 -d > $tmp_script' -f $scriptBase64)
     $commands += 'chmod +x "$tmp_script"'
     $commands += 'bash "$tmp_script"'
     $commands += 'status=$?'
