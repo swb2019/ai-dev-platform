@@ -2551,38 +2551,47 @@ function Ensure-DockerDesktop {
 
 function Ensure-Repository {
     Write-Section "Cloning repository inside WSL"
-    $scriptLines = @(
-        'set -e',
-        'repo_slug="${AI_DEV_PLATFORM_SANDBOX_REPO:-__REPO_SLUG_PLACEHOLDER__}"',
-        'if [ -z "$repo_slug" ]; then',
-        '  echo "Repository slug is empty inside WSL. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo before rerunning." >&2',
-        '  exit 129',
-        'fi',
-        'user_home=$(getent passwd $(whoami) | cut -d: -f6)',
-        'if [ -n "$user_home" ]; then',
-        '  export HOME="$user_home"',
-        'fi',
-        'repo_url="https://github.com/$repo_slug.git"',
-        'repo_dir="$HOME/ai-dev-platform"',
-        'if [ ! -d "$repo_dir/.git" ]; then',
-        '  git clone "$repo_url" "$repo_dir" || exit $?',
-        'fi',
-        'cd "$repo_dir"',
-        'current_origin="$(git remote get-url origin 2>/dev/null)"',
-        'if [ "$current_origin" != "$repo_url" ]; then',
-        '  git remote set-url origin "$repo_url"',
-        'fi',
-        'git fetch origin',
-        'git checkout "__BRANCH_PLACEHOLDER__"',
-        'git pull --ff-only origin "__BRANCH_PLACEHOLDER__" || true'
-    )
-    $innerScript = ($scriptLines -join "`n").Replace('__REPO_SLUG_PLACEHOLDER__', $RepoSlug).Replace('__BRANCH_PLACEHOLDER__', $Branch)
+    # Build the script content with proper variable substitution
+    $scriptContent = @"
+set -e
+repo_slug="`${AI_DEV_PLATFORM_SANDBOX_REPO:-$($RepoSlug)}"
+if [ -z "`$repo_slug" ]; then
+  echo "Repository slug is empty inside WSL. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo before rerunning." >&2
+  exit 129
+fi
+user_home=`$(getent passwd `$(whoami) | cut -d: -f6)
+if [ -n "`$user_home" ]; then
+  export HOME="`$user_home"
+fi
+repo_url="https://github.com/`$repo_slug.git"
+repo_dir="`$HOME/ai-dev-platform"
+if [ ! -d "`$repo_dir/.git" ]; then
+  git clone "`$repo_url" "`$repo_dir" || exit `$?
+fi
+cd "`$repo_dir"
+current_origin="`$(git remote get-url origin 2>/dev/null)"
+if [ "`$current_origin" != "`$repo_url" ]; then
+  git remote set-url origin "`$repo_url"
+fi
+git fetch origin
+git checkout "$($Branch)"
+git pull --ff-only origin "$($Branch)" || true
+"@
+
+    # Use base64 encoding to safely pass the script to WSL, avoiding here-document delimiter issues
+    $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($scriptContent)
+    $scriptBase64 = [Convert]::ToBase64String($scriptBytes)
+
+    # Use a unique delimiter that won't appear in base64 strings
+    $delimiter = "AI_DEV_PLATFORM_SCRIPT_DELIMITER_$(Get-Random)"
     $command = @"
-cat <<'EOF' >/tmp/ai-dev-clone.sh
-$innerScript
-EOF
+script_b64='$scriptBase64'
+echo "`$script_b64" | base64 -d > /tmp/ai-dev-clone.sh
+chmod +x /tmp/ai-dev-clone.sh
 bash /tmp/ai-dev-clone.sh
+exit_code=`$?
 rm -f /tmp/ai-dev-clone.sh
+exit `$exit_code
 "@
     $result = Invoke-Wsl -Command $command
     if ($result.ExitCode -ne 0) {
@@ -2928,6 +2937,158 @@ function Prompt-OptionalToken {
     return $false
 }
 
+function Get-GitHubScopeRequirements {
+    param([string]$RepoSlug)
+    $owner = $null
+    if ($RepoSlug -and $RepoSlug.Contains('/')) {
+        $owner = ($RepoSlug -split '/')[0]
+    }
+    $result = [pscustomobject]@{
+        Owner              = $owner
+        OwnerType          = 'User'
+        RequiredScopes     = @('repo', 'workflow')
+        ScopeDisplayString = 'repo,workflow'
+    }
+    if (-not $owner) {
+        return $result
+    }
+    try {
+        $headers = @{
+            'User-Agent' = 'ai-dev-platform-bootstrap'
+            Accept        = 'application/vnd.github+json'
+        }
+        $ownerInfo = Invoke-RestMethod -Uri ("https://api.github.com/users/{0}" -f $owner) -Headers $headers -ErrorAction Stop
+        if ($ownerInfo.type -and $ownerInfo.type -eq 'Organization') {
+            $result.OwnerType = 'Organization'
+            $result.RequiredScopes = @('repo', 'workflow', 'admin:org')
+        } elseif ($ownerInfo.type) {
+            $result.OwnerType = $ownerInfo.type
+        }
+    } catch {
+        Write-Verbose "Unable to determine GitHub owner type for '$owner'. Assuming user-owned repository. $_"
+    }
+    $result.ScopeDisplayString = ($result.RequiredScopes -join ',')
+    return $result
+}
+
+function Test-GitHubToken {
+    param(
+        [string]$Token,
+        [string]$RepoSlug,
+        [string[]]$RequiredScopes
+    )
+    $result = [pscustomobject]@{
+        IsValid       = $false
+        Login         = $null
+        MissingScopes = @()
+        HasAdmin      = $false
+        Message       = ""
+    }
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        $result.Message = "GitHub token is required."
+        return $result
+    }
+    $headers = @{
+        Authorization = "token $Token"
+        Accept        = "application/vnd.github+json"
+        'User-Agent'  = "ai-dev-platform-bootstrap"
+    }
+    try {
+        $userResponse = Invoke-WebRequest -Uri "https://api.github.com/user" -Headers $headers -UseBasicParsing -ErrorAction Stop
+        $userInfo = $userResponse.Content | ConvertFrom-Json
+        $result.Login = $userInfo.login
+        $scopeHeader = $userResponse.Headers["X-OAuth-Scopes"]
+        $grantedScopes = @()
+        if ($scopeHeader) {
+            $grantedScopes = $scopeHeader -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ }
+        }
+        $missing = @()
+        foreach ($scope in $RequiredScopes) {
+            if ($grantedScopes -notcontains $scope.ToLowerInvariant()) {
+                $missing += $scope
+            }
+        }
+        $result.MissingScopes = $missing
+    } catch {
+        $result.Message = "Failed to validate GitHub token (`$($_.Exception.Message)`)."
+        return $result
+    }
+
+    try {
+        $repoInfo = Invoke-RestMethod -Uri ("https://api.github.com/repos/{0}" -f $RepoSlug) -Headers $headers -ErrorAction Stop
+        if ($repoInfo -and $repoInfo.permissions) {
+            $result.HasAdmin = [bool]$repoInfo.permissions.admin
+        }
+    } catch {
+        $statusCode = $null
+        try {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        } catch {
+            $statusCode = $null
+        }
+        if ($statusCode -eq 404) {
+            $result.Message = "Repository '$RepoSlug' could not be found or the token user lacks access."
+        } elseif ($statusCode) {
+            $result.Message = "GitHub API call for '$RepoSlug' failed with status $statusCode. Ensure the repository exists and your token can access it."
+        } else {
+            $result.Message = "GitHub API call for '$RepoSlug' failed. $_"
+        }
+        return $result
+    }
+
+    if (($result.MissingScopes.Count -eq 0) -and $result.HasAdmin) {
+        $result.IsValid = $true
+        $result.Message = "Token validated."
+        return $result
+    }
+
+    $issues = @()
+    if ($result.MissingScopes.Count -gt 0) {
+        $issues += "missing scopes: $($result.MissingScopes -join ', ')"
+    }
+    if (-not $result.HasAdmin) {
+        $issues += "account '$($result.Login)' is not an administrator of $RepoSlug"
+    }
+    if ($issues.Count -eq 0) {
+        $issues += "token validation failed for an unknown reason"
+    }
+    $result.Message = "GitHub token is not ready for repository hardening ($($issues -join '; '))."
+    return $result
+}
+
+function Ensure-GitHubTokenReady {
+    param(
+        [string]$RepoSlug,
+        [string[]]$RequiredScopes
+    )
+    $tokenProvidedByPrompt = $false
+    while ($true) {
+        $currentToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
+        if ([string]::IsNullOrWhiteSpace($currentToken)) {
+            $promptText = "GitHub token (scopes: {0})" -f ($RequiredScopes -join ',')
+            $tokenProvidedByPrompt = $true
+            if (-not (Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage $promptText)) {
+                Write-Warning "A GitHub token is required for automated bootstrap. Please paste a token with the scopes above."
+                continue
+            }
+            $currentToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
+        }
+        $validation = Test-GitHubToken -Token $currentToken -RepoSlug $RepoSlug -RequiredScopes $RequiredScopes
+        if ($validation.IsValid) {
+            $account = if ($validation.Login) { $validation.Login } else { "(unknown account)" }
+            Write-Host ("GitHub token validated for {0} (account: {1})." -f $RepoSlug, $account) -ForegroundColor Green
+            return [pscustomobject]@{
+                TokenProvidedByPrompt = $tokenProvidedByPrompt
+                Validation            = $validation
+            }
+        }
+        Write-Warning $validation.Message
+        Write-Host "Provide a new GitHub token and try again." -ForegroundColor Yellow
+        Remove-Item -Path Env:GH_TOKEN -ErrorAction SilentlyContinue
+        $tokenProvidedByPrompt = $true
+    }
+}
+
 Write-Section "Windows bootstrap for AI Dev Platform"
 Test-NetworkConnectivity
 Ensure-Administrator
@@ -2952,17 +3113,23 @@ if (-not $SkipSetupAll) {
     $setupTokenExisting = [Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process")
     $setupTokenWasEmpty = [string]::IsNullOrWhiteSpace($setupTokenExisting)
     $setupGithubTokenAdded = $false
-    if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")) -and
+    $scopeRequirements = Get-GitHubScopeRequirements -RepoSlug $RepoSlug
+    $currentGhToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
+    Write-Section "GitHub personal access token"
+    if ([string]::IsNullOrWhiteSpace($currentGhToken) -and
         [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process"))) {
-        Write-Section "GitHub personal access token"
-        Write-Host "To allow automated repo hardening:" -ForegroundColor Yellow
-        Write-Host "  1. Visit https://github.com/settings/personal-access-tokens/new (Settings → Developer settings → Personal access tokens → Tokens (classic))." -ForegroundColor Yellow
-        Write-Host "  2. Name it 'ai-dev-platform bootstrap', choose an expiration, and check scopes: repo, workflow." -ForegroundColor Yellow
-        Write-Host "  3. If you administer the organization's repo, also check admin:org." -ForegroundColor Yellow
-        Write-Host "  4. Click Generate token, copy it immediately, then paste it at the prompt below." -ForegroundColor Yellow
-        Write-Host "Tip: set GH_TOKEN ahead of time (e.g., 'setx GH_TOKEN <token>' in PowerShell) to reuse it automatically." -ForegroundColor Yellow
+        Write-Host "Automated repository hardening requires a GitHub token with scopes: $($scopeRequirements.ScopeDisplayString)." -ForegroundColor Yellow
+        if ($scopeRequirements.OwnerType -eq 'Organization') {
+            Write-Host "Detected organization-owned repo '$RepoSlug'; admin:org scope and administrator rights are required." -ForegroundColor Yellow
+        }
+        Write-Host "  1. Visit https://github.com/settings/personal-access-tokens/new (classic)." -ForegroundColor Yellow
+        Write-Host "  2. Name it 'ai-dev-platform bootstrap', choose an expiration, and enable the scopes above." -ForegroundColor Yellow
+        Write-Host "  3. Paste the token at the prompt when requested (or set GH_TOKEN ahead of time with 'setx GH_TOKEN <token>')." -ForegroundColor Yellow
+    } elseif (-not [string]::IsNullOrWhiteSpace($currentGhToken)) {
+        Write-Host "Validating existing GH_TOKEN against $RepoSlug..." -ForegroundColor Yellow
     }
-    $ghTokenAdded = Prompt-OptionalToken -EnvName "GH_TOKEN" -PromptMessage "Optional GitHub token (scopes: repo,workflow; add admin:org for org repos)"
+    $ghTokenContext = Ensure-GitHubTokenReady -RepoSlug $RepoSlug -RequiredScopes $scopeRequirements.RequiredScopes
+    $ghTokenAdded = $ghTokenContext.TokenProvidedByPrompt
     $infTokenAdded = Prompt-OptionalToken -EnvName "INFISICAL_TOKEN" -PromptMessage "Optional Infisical token"
     $ghProcessToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
     $setupProcessToken = [Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process")
