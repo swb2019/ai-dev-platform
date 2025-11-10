@@ -161,13 +161,37 @@ Before you start, make sure you can provide the following:
 
 ### Optional: Sync your sandbox fork with upstream
 
+Always operate on **your own fork** (for example, `your-user/ai-dev-platform-sandbox`). The helper refuses to rewrite the upstream repo, and GitHub branch protections will block force pushes unless you target a fork you control.
+
 ```powershell
 # Optional: sync your sandbox fork with upstream
 Set-Location C:\dev\ai-dev-platform
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1
+$env:AI_DEV_PLATFORM_SANDBOX_REPO = 'your-user/ai-dev-platform-sandbox'
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -ForceClean
 ```
 
-This script authenticates the GitHub CLI if necessary, ensures your fork exists, mirrors the latest upstream commits, and sets the correct remotes.
+Need a fresh fork for testing? Run this one-liner (requires a PAT with `delete_repo` scope) and it will delete the old fork, recreate it privately, reclone it, and sync it—all with a single command:
+
+```powershell
+powershell -NoProfile -Command "& {
+  gh repo delete your-user/ai-dev-platform-sandbox --yes;
+  gh api -X POST repos/swb2019/ai-dev-platform/forks -f name=ai-dev-platform-sandbox -F private=true;
+  if (Test-Path C:\dev\ai-dev-platform) { Remove-Item -Recurse -Force C:\dev\ai-dev-platform }
+  git clone https://github.com/your-user/ai-dev-platform-sandbox.git C:\dev\ai-dev-platform;
+  Set-Location C:\dev\ai-dev-platform;
+  $env:AI_DEV_PLATFORM_SANDBOX_REPO = 'your-user/ai-dev-platform-sandbox';
+  powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -ForceClean
+}"
+```
+
+Key safety switches (available on every run):
+
+- `-SandboxRepoSlug owner/repo` (or `AI_DEV_PLATFORM_SANDBOX_REPO`) explicitly tells the helper which fork to manage. The helper refuses to touch `swb2019/ai-dev-platform` so you cannot accidentally rewrite upstream.
+- `-ForceClean` is **required** if the working tree contains changes **or** if the local/origin branches contain commits that are not present in upstream; otherwise the script aborts instead of destructively resetting local or remote history. Run it only when you are comfortable discarding that history.
+- All destructive operations honor PowerShell's `-WhatIf` / `-Confirm` switches (thanks to `ShouldProcess`), so you can dry-run the helper to review the planned resets/pushes before executing them.
+- `-GitHubHost`, `-SandboxProtocol` (`https` or `ssh`), and `-RepositoryVisibility` (`private`, `internal`, `public`) let you target GitHub Enterprise / SSH-only environments. These can also be set via `AI_DEV_PLATFORM_GITHUB_HOST`, `AI_DEV_PLATFORM_SANDBOX_PROTOCOL`, and `AI_DEV_PLATFORM_REPO_VISIBILITY`.
+
+The helper authenticates the GitHub CLI for the requested host, ensures your fork exists (respecting the visibility you chose), mirrors the upstream branch with an explicit `--force-with-lease`, and pins the fork’s default branch to match upstream.
 
 ### Run the automated bootstrap (elevated PowerShell)
 
