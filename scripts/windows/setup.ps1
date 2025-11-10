@@ -3170,9 +3170,13 @@ exit 0
     if ($envPrefix) {
         $commands += $envPrefix
     }
-    $commands += "base64 -d <<'__WSLGH__' | bash"
-    $commands += $scriptBase64
-    $commands += "__WSLGH__"
+    $commands += 'tmp_script=$(mktemp /tmp/ai-dev-gh-auth.XXXXXX.sh)'
+    $commands += "printf '%s' '$scriptBase64' | base64 -d > \"\$tmp_script\""
+    $commands += 'chmod +x "$tmp_script"'
+    $commands += 'bash "$tmp_script"'
+    $commands += 'status=$?'
+    $commands += 'rm -f "$tmp_script"'
+    $commands += 'exit $status'
     $command = ($commands -join '; ')
     $result = Invoke-Wsl -Command $command
     if ($result.ExitCode -ne 0) {
