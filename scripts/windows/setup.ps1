@@ -34,6 +34,11 @@ if ($CursorInstallerPath) {
     }
 }
 
+if (-not $PSBoundParameters.ContainsKey('RepoSlug') -and -not [string]::IsNullOrWhiteSpace($env:AI_DEV_PLATFORM_SANDBOX_REPO)) {
+    Write-Host ("Using sandbox repository slug '{0}' from AI_DEV_PLATFORM_SANDBOX_REPO." -f $env:AI_DEV_PLATFORM_SANDBOX_REPO) -ForegroundColor Cyan
+    $RepoSlug = $env:AI_DEV_PLATFORM_SANDBOX_REPO
+}
+
 if ($DistroName.StartsWith("[") -or $DistroName.StartsWith("-")) {
     Write-Warning "Received DistroName '$DistroName'; resetting to 'Ubuntu'. Use -DistroName if you need a custom image."
     $DistroName = "Ubuntu"

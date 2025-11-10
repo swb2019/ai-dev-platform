@@ -170,6 +170,8 @@ $env:AI_DEV_PLATFORM_SANDBOX_REPO = 'your-user/ai-dev-platform-sandbox'
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -ForceClean
 ```
 
+> The same `AI_DEV_PLATFORM_SANDBOX_REPO` environment variable is honored by `scripts/windows/setup.ps1`, so once it is set the Windows bootstrap automatically clones and hardens **your** fork instead of the upstream repo.
+
 Need a fresh fork for testing? Run this one-liner (requires a PAT with `delete_repo` scope) and it will delete the old fork, recreate it privately, reclone it, and sync it—all with a single command:
 
 ```powershell
