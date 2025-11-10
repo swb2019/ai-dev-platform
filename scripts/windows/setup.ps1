@@ -37,8 +37,24 @@ if ($CursorInstallerPath) {
 if (-not $PSBoundParameters.ContainsKey('RepoSlug') -and -not [string]::IsNullOrWhiteSpace($env:AI_DEV_PLATFORM_SANDBOX_REPO)) {
     Write-Host ("Using sandbox repository slug '{0}' from AI_DEV_PLATFORM_SANDBOX_REPO." -f $env:AI_DEV_PLATFORM_SANDBOX_REPO) -ForegroundColor Cyan
     $RepoSlug = $env:AI_DEV_PLATFORM_SANDBOX_REPO
-    Ensure-WslEnvPassthrough -VariableName 'AI_DEV_PLATFORM_SANDBOX_REPO'
 }
+
+if ([string]::IsNullOrWhiteSpace($RepoSlug)) {
+    $defaultSlug = if (-not [string]::IsNullOrWhiteSpace($env:AI_DEV_PLATFORM_SANDBOX_REPO)) { $env:AI_DEV_PLATFORM_SANDBOX_REPO } else { "swb2019/ai-dev-platform" }
+    $inputSlug = Read-Host "Enter GitHub repo slug to clone [$defaultSlug]"
+    if ([string]::IsNullOrWhiteSpace($inputSlug)) {
+        $RepoSlug = $defaultSlug
+    } else {
+        $RepoSlug = $inputSlug.Trim()
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($RepoSlug) -or (-not $RepoSlug.Contains("/"))) {
+    throw "Repository slug '$RepoSlug' is invalid. Provide it in 'owner/repo' format (e.g., 'your-user/ai-dev-platform-sandbox')."
+}
+
+$env:AI_DEV_PLATFORM_SANDBOX_REPO = $RepoSlug
+Ensure-WslEnvPassthrough -VariableName 'AI_DEV_PLATFORM_SANDBOX_REPO'
 
 if ($DistroName.StartsWith("[") -or $DistroName.StartsWith("-")) {
     Write-Warning "Received DistroName '$DistroName'; resetting to 'Ubuntu'. Use -DistroName if you need a custom image."
@@ -2535,15 +2551,21 @@ function Ensure-DockerDesktop {
 
 function Ensure-Repository {
     Write-Section "Cloning repository inside WSL"
+    $escapedSlug = $RepoSlug.Replace('"','\"')
     $cloneScript = @"
+repo_slug="`$\{AI_DEV_PLATFORM_SANDBOX_REPO:-$escapedSlug}"
+if [ -z "`$repo_slug" ]; then
+  echo "Repository slug is empty inside WSL. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo before rerunning." >&2
+  exit 129
+fi
 user_home=`$(getent passwd `$(whoami) | cut -d: -f6)
 if [ -n "`$user_home" ]; then
   export HOME="`$user_home"
 fi
-repo_url="https://github.com/$RepoSlug.git"
+repo_url="https://github.com/`$repo_slug.git"
 repo_dir="`$HOME/ai-dev-platform"
 if [ ! -d "`$repo_dir/.git" ]; then
-  git clone "`$repo_url" "`$repo_dir"
+  git clone "`$repo_url" "`$repo_dir" || exit \$?
 fi
 cd "`$repo_dir"
 current_origin="$(git remote get-url origin 2>/dev/null)"
