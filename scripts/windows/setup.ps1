@@ -37,6 +37,7 @@ if ($CursorInstallerPath) {
 if (-not $PSBoundParameters.ContainsKey('RepoSlug') -and -not [string]::IsNullOrWhiteSpace($env:AI_DEV_PLATFORM_SANDBOX_REPO)) {
     Write-Host ("Using sandbox repository slug '{0}' from AI_DEV_PLATFORM_SANDBOX_REPO." -f $env:AI_DEV_PLATFORM_SANDBOX_REPO) -ForegroundColor Cyan
     $RepoSlug = $env:AI_DEV_PLATFORM_SANDBOX_REPO
+    Ensure-WslEnvPassthrough -VariableName 'AI_DEV_PLATFORM_SANDBOX_REPO'
 }
 
 if ($DistroName.StartsWith("[") -or $DistroName.StartsWith("-")) {
@@ -2539,10 +2540,16 @@ user_home=`$(getent passwd `$(whoami) | cut -d: -f6)
 if [ -n "`$user_home" ]; then
   export HOME="`$user_home"
 fi
-if [ ! -d "`$HOME/ai-dev-platform/.git" ]; then
-  git clone https://github.com/$RepoSlug.git "`$HOME/ai-dev-platform"
+repo_url="https://github.com/$RepoSlug.git"
+repo_dir="`$HOME/ai-dev-platform"
+if [ ! -d "`$repo_dir/.git" ]; then
+  git clone "`$repo_url" "`$repo_dir"
 fi
-cd "`$HOME/ai-dev-platform"
+cd "`$repo_dir"
+current_origin="$(git remote get-url origin 2>/dev/null)"
+if [ "`$current_origin" != "`$repo_url" ]; then
+  git remote set-url origin "`$repo_url"
+fi
 git fetch origin
 git checkout $Branch
 git pull --ff-only origin $Branch || true
