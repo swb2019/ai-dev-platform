@@ -2552,6 +2552,7 @@ function Ensure-DockerDesktop {
 function Ensure-Repository {
     Write-Section "Cloning repository inside WSL"
     $escapedSlug = $RepoSlug.Replace('"','\"')
+    $escapedSlug = $escapedSlug.Replace('$', '`\$')
     $cloneScript = @"
 repo_slug="`$\{AI_DEV_PLATFORM_SANDBOX_REPO:-$escapedSlug}"
 if [ -z "`$repo_slug" ]; then
