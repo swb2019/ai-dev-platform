@@ -2551,10 +2551,8 @@ function Ensure-DockerDesktop {
 
 function Ensure-Repository {
     Write-Section "Cloning repository inside WSL"
-    $escapedSlug = $RepoSlug.Replace('"','\"')
-    $escapedSlug = $escapedSlug.Replace('$', '`\$')
-    $cloneScript = @"
-repo_slug="`$\{AI_DEV_PLATFORM_SANDBOX_REPO:-$escapedSlug}"
+    $cloneScript = @'
+repo_slug="${AI_DEV_PLATFORM_SANDBOX_REPO:-__REPO_SLUG_PLACEHOLDER__}"
 if [ -z "`$repo_slug" ]; then
   echo "Repository slug is empty inside WSL. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo before rerunning." >&2
   exit 129
@@ -2576,7 +2574,8 @@ fi
 git fetch origin
 git checkout $Branch
 git pull --ff-only origin $Branch || true
-"@
+'@
+    $cloneScript = $cloneScript.Replace('__REPO_SLUG_PLACEHOLDER__', $RepoSlug)
     $result = Invoke-Wsl -Command $cloneScript
     if ($result.ExitCode -ne 0) {
         throw "Failed to clone or update repository inside WSL (exit $($result.ExitCode))."
