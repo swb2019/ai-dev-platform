@@ -37,12 +37,24 @@ if ($CursorInstallerPath) {
 if (-not $PSBoundParameters.ContainsKey('RepoSlug') -and -not [string]::IsNullOrWhiteSpace($env:AI_DEV_PLATFORM_SANDBOX_REPO)) {
     Write-Host ("Using sandbox repository slug '{0}' from AI_DEV_PLATFORM_SANDBOX_REPO." -f $env:AI_DEV_PLATFORM_SANDBOX_REPO) -ForegroundColor Cyan
     $RepoSlug = $env:AI_DEV_PLATFORM_SANDBOX_REPO
-    Ensure-WslEnvPassthrough -VariableName 'AI_DEV_PLATFORM_SANDBOX_REPO'
 }
 
 if ([string]::IsNullOrWhiteSpace($RepoSlug)) {
-    throw "Repository slug is empty. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo (or pass -RepoSlug owner/repo) before running setup."
+    $defaultSlug = if (-not [string]::IsNullOrWhiteSpace($env:AI_DEV_PLATFORM_SANDBOX_REPO)) { $env:AI_DEV_PLATFORM_SANDBOX_REPO } else { "swb2019/ai-dev-platform" }
+    $inputSlug = Read-Host "Enter GitHub repo slug to clone [$defaultSlug]"
+    if ([string]::IsNullOrWhiteSpace($inputSlug)) {
+        $RepoSlug = $defaultSlug
+    } else {
+        $RepoSlug = $inputSlug.Trim()
+    }
 }
+
+if ([string]::IsNullOrWhiteSpace($RepoSlug) -or (-not $RepoSlug.Contains("/"))) {
+    throw "Repository slug '$RepoSlug' is invalid. Provide it in 'owner/repo' format (e.g., 'your-user/ai-dev-platform-sandbox')."
+}
+
+$env:AI_DEV_PLATFORM_SANDBOX_REPO = $RepoSlug
+Ensure-WslEnvPassthrough -VariableName 'AI_DEV_PLATFORM_SANDBOX_REPO'
 
 if ($DistroName.StartsWith("[") -or $DistroName.StartsWith("-")) {
     Write-Warning "Received DistroName '$DistroName'; resetting to 'Ubuntu'. Use -DistroName if you need a custom image."
