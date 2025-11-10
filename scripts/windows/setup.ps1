@@ -2553,30 +2553,31 @@ function Ensure-Repository {
     Write-Section "Cloning repository inside WSL"
     $repoSlugEscaped = $RepoSlug.Replace('"','\"')
     $branchEscaped = $Branch.Replace('"','\"')
-    $cloneScript = @"
-repo_slug="${AI_DEV_PLATFORM_SANDBOX_REPO:-$repoSlugEscaped}"
-if [ -z "$repo_slug" ]; then
-  echo "Repository slug is empty inside WSL. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo before rerunning." >&2
-  exit 129
-fi
-user_home=\$(getent passwd \$(whoami) | cut -d: -f6)
-if [ -n "$user_home" ]; then
-  export HOME="$user_home"
-fi
-repo_url="https://github.com/$repo_slug.git"
-repo_dir="$HOME/ai-dev-platform"
-if [ ! -d "$repo_dir/.git" ]; then
-  git clone "$repo_url" "$repo_dir" || exit \$?
-fi
-cd "$repo_dir"
-current_origin="\$(git remote get-url origin 2>/dev/null)"
-if [ "$current_origin" != "$repo_url" ]; then
-  git remote set-url origin "$repo_url"
-fi
-git fetch origin
-git checkout "$branchEscaped"
-git pull --ff-only origin "$branchEscaped" || true
-"@
+    $cloneLines = @(
+        'repo_slug="${AI_DEV_PLATFORM_SANDBOX_REPO:-__REPO_SLUG_PLACEHOLDER__}"',
+        'if [ -z "$repo_slug" ]; then',
+        '  echo "Repository slug is empty inside WSL. Set AI_DEV_PLATFORM_SANDBOX_REPO=owner/repo before rerunning." >&2',
+        '  exit 129',
+        'fi',
+        'user_home=$(getent passwd $(whoami) | cut -d: -f6)',
+        'if [ -n "$user_home" ]; then',
+        '  export HOME="$user_home"',
+        'fi',
+        'repo_url="https://github.com/$repo_slug.git"',
+        'repo_dir="$HOME/ai-dev-platform"',
+        'if [ ! -d "$repo_dir/.git" ]; then',
+        '  git clone "$repo_url" "$repo_dir" || exit $?',
+        'fi',
+        'cd "$repo_dir"',
+        'current_origin="$(git remote get-url origin 2>/dev/null)"',
+        'if [ "$current_origin" != "$repo_url" ]; then',
+        '  git remote set-url origin "$repo_url"',
+        'fi',
+        'git fetch origin',
+        'git checkout "__BRANCH_PLACEHOLDER__"',
+        'git pull --ff-only origin "__BRANCH_PLACEHOLDER__" || true'
+    )
+    $cloneScript = ($cloneLines -join "`n").Replace('__REPO_SLUG_PLACEHOLDER__', $repoSlugEscaped).Replace('__BRANCH_PLACEHOLDER__', $branchEscaped)
     $result = Invoke-Wsl -Command $cloneScript
     if ($result.ExitCode -ne 0) {
         throw "Failed to clone or update repository inside WSL (exit $($result.ExitCode))."
