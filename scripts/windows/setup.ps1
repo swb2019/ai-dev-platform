@@ -3125,36 +3125,30 @@ if [ -z "${GH_TOKEN:-}" ]; then
   exit 1
 fi
 gh auth logout --hostname github.com >/dev/null 2>&1 || true
-if ! printf '%s\n' "$GH_TOKEN" | gh auth login --hostname github.com --git-protocol https --with-token >/dev/null 2>&1; then
-  echo "Unable to authenticate GitHub CLI inside WSL using GH_TOKEN." >&2
-  exit 2
+login="${GH_AUTH_USER:-}"
+if [ -z "$login" ]; then
+  login_payload=$(curl -fsSL -H "Authorization: token $GH_TOKEN" https://api.github.com/user 2>/dev/null || true)
+  if [ -n "$login_payload" ]; then
+    login=$(python3 -c 'import json,sys; data=json.load(sys.stdin); print(data.get("login",""))' <<<"$login_payload" 2>/dev/null || true)
+  fi
 fi
-scopes_line="$(gh auth status --hostname github.com 2>&1 | grep -im1 'scopes:' || true)"
-scope_blob="$(printf '%s' "$scopes_line" | cut -d':' -f2- | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
-normalized="$(printf '%s' "$scope_blob" | tr ',' ' ')"
-missing=""
-for required in __REQUIRED_SCOPES__; do
-  if [ -z "$required" ]; then
-    continue
-  fi
-  found=0
-  for entry in $normalized; do
-    if [ "$entry" = "$required" ]; then
-      found=1
-      break
-    fi
-  done
-  if [ $found -ne 1 ]; then
-    if [ -z "$missing" ]; then
-      missing="$required"
-    else
-      missing="$missing, $required"
-    fi
-  fi
-done
-if [ -n "$missing" ]; then
-  echo "GitHub CLI session in WSL is missing scope(s): $missing." >&2
-  exit 3
+
+if [ -z "$login" ]; then
+  login="unknown"
+fi
+
+config_dir="$HOME/.config/gh"
+hosts_file="$config_dir/hosts.yml"
+mkdir -p "$config_dir"
+printf 'github.com:\n' >"$hosts_file"
+printf '    user: %s\n' "$login" >>"$hosts_file"
+printf '    oauth_token: %s\n' "$GH_TOKEN" >>"$hosts_file"
+printf '    git_protocol: https\n' >>"$hosts_file"
+chmod 600 "$hosts_file"
+
+if ! gh auth status --hostname github.com >/dev/null 2>&1; then
+  echo "GitHub CLI authentication verification failed even after writing hosts.yml." >&2
+  exit 2
 fi
 if ! gh api "repos/__REPO_SLUG__" --jq '.permissions.admin' >/dev/null 2>&1; then
   echo "GitHub CLI authenticated user lacks administrator rights on __REPO_SLUG__." >&2
@@ -3163,7 +3157,7 @@ fi
 exit 0
 '@).TrimStart()
 
-    $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral)
+    $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral).Replace("`r","")
     $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script)
     $scriptBase64 = [Convert]::ToBase64String($scriptBytes)
     $tmpScriptPath = "/tmp/ai-dev-gh-auth-$([Guid]::NewGuid().ToString('N')).sh"
@@ -3229,6 +3223,12 @@ if (-not $SkipSetupAll) {
     $infTokenAdded = Prompt-OptionalToken -EnvName "INFISICAL_TOKEN" -PromptMessage "Optional Infisical token"
     $ghProcessToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
     $setupProcessToken = [Environment]::GetEnvironmentVariable("SETUP_GITHUB_TOKEN", "Process")
+    $ghAuthUserProvided = $false
+    if ($ghTokenContext.Validation -and -not [string]::IsNullOrWhiteSpace($ghTokenContext.Validation.Login)) {
+        [Environment]::SetEnvironmentVariable("GH_AUTH_USER", $ghTokenContext.Validation.Login, 'Process')
+        Ensure-WslEnvPassthrough -VariableName 'GH_AUTH_USER'
+        $ghAuthUserProvided = $true
+    }
     if ($setupTokenWasEmpty -and (-not [string]::IsNullOrWhiteSpace($ghProcessToken))) {
         [Environment]::SetEnvironmentVariable("SETUP_GITHUB_TOKEN", $ghProcessToken, 'Process')
         $setupProcessToken = $ghProcessToken
@@ -3245,6 +3245,7 @@ if (-not $SkipSetupAll) {
     if ($ghTokenAdded) { Remove-Item -Path Env:GH_TOKEN -ErrorAction SilentlyContinue }
     if ($setupGithubTokenAdded) { Remove-Item -Path Env:SETUP_GITHUB_TOKEN -ErrorAction SilentlyContinue }
     if ($infTokenAdded) { Remove-Item -Path Env:INFISICAL_TOKEN -ErrorAction SilentlyContinue }
+    if ($ghAuthUserProvided) { Remove-Item -Path Env:GH_AUTH_USER -ErrorAction SilentlyContinue }
 }
 
 $cloudBootstrapContext = Ensure-CloudBootstrap -RepoSlug $RepoSlug
