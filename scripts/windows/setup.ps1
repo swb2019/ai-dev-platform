@@ -3161,7 +3161,7 @@ if ! gh api "repos/__REPO_SLUG__" --jq '.permissions.admin' >/dev/null 2>&1; the
   exit 4
 fi
 exit 0
-'@
+'@.TrimStart()
 
     $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral)
     $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script)
