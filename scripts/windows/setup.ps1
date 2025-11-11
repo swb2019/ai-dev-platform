@@ -1971,7 +1971,7 @@ function Invoke-Wsl {
         [string]$Command,
         [switch]$AsRoot
     )
-    $prefix = "set -euo pipefail; $Command"
+    $prefix = "set -euo pipefail; " + $Command
     $prefix = $prefix.Replace("`r","")
     $args = @("-d", $script:DistroName)
     if ($AsRoot) {
