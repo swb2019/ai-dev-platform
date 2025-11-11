@@ -3163,7 +3163,7 @@ fi
 exit 0
 '@).TrimStart()
 
-    $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral)
+    $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral).Replace("`r","")
     $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script)
     $scriptBase64 = [Convert]::ToBase64String($scriptBytes)
     $tmpScriptPath = "/tmp/ai-dev-gh-auth-$([Guid]::NewGuid().ToString('N')).sh"
