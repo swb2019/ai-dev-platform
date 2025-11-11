@@ -3114,6 +3114,7 @@ function Ensure-WslGithubAuthentication {
     $repoLiteral = $RepoSlug
 
     $scriptTemplate = @'
+#!/usr/bin/env bash
 set -euo pipefail
 if ! command -v gh >/dev/null 2>&1; then
   echo "GitHub CLI is not installed inside WSL." >&2
