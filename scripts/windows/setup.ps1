@@ -3174,7 +3174,7 @@ exit 0
     }
     $commands += ("printf '%s' '{0}' | base64 -d > '{1}'" -f $scriptBase64, $tmpScriptPath)
     $commands += ("chmod +x '{0}'" -f $tmpScriptPath)
-    $commands += ("bash '{0}'" -f $tmpScriptPath)
+    $commands += ("/bin/bash '{0}'" -f $tmpScriptPath)
     $commands += 'status=$?'
     $commands += ("rm -f '{0}'" -f $tmpScriptPath)
     $commands += 'exit $status'
