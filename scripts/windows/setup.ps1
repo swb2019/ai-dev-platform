@@ -1971,7 +1971,7 @@ function Invoke-Wsl {
         [string]$Command,
         [switch]$AsRoot
     )
-    $prefix = "set -euo pipefail; $Command"
+    $prefix = "set -euo pipefail; " + $Command
     $prefix = $prefix.Replace("`r","")
     $args = @("-d", $script:DistroName)
     if ($AsRoot) {
@@ -3165,17 +3165,17 @@ exit 0
     $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral)
     $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script)
     $scriptBase64 = [Convert]::ToBase64String($scriptBytes)
+    $tmpScriptPath = "/tmp/ai-dev-gh-auth-$([Guid]::NewGuid().ToString('N')).sh"
     $commands = @()
     $envPrefix = Get-WslEnvPrefix
     if ($envPrefix) {
         $commands += $envPrefix
     }
-    $commands += 'tmp_script=$(mktemp /tmp/ai-dev-gh-auth.XXXXXX.sh)'
-    $commands += ('printf ''%s'' ''{0}'' | base64 -d > $tmp_script' -f $scriptBase64)
-    $commands += 'chmod +x "$tmp_script"'
-    $commands += 'bash "$tmp_script"'
+    $commands += ('printf ''%s'' ''{0}'' | base64 -d > ''{1}''' -f $scriptBase64, $tmpScriptPath)
+    $commands += ("chmod +x '{0}'" -f $tmpScriptPath)
+    $commands += ("bash '{0}'" -f $tmpScriptPath)
     $commands += 'status=$?'
-    $commands += 'rm -f "$tmp_script"'
+    $commands += ("rm -f '{0}'" -f $tmpScriptPath)
     $commands += 'exit $status'
     $command = ($commands -join '; ')
     $result = Invoke-Wsl -Command $command
