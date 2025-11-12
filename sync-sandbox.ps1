@@ -59,7 +59,7 @@ function Ensure-RepoDirectoryIsFree {
             return
         }
 
-        Write-Host ""; Write-Host "The following processes are using $Path:" -ForegroundColor Yellow
+        Write-Host ""; Write-Host "The following processes are using ${Path}:" -ForegroundColor Yellow
         $lockers | Select-Object Name, Id, CommandLine | Format-Table -AutoSize | Out-String | Write-Host
 
         $response = Read-Host "Close these processes automatically? [Y/n]"
