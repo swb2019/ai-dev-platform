@@ -174,6 +174,8 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -Fo
 
 > **GitHub token tip:** The Windows bootstrap now validates `GH_TOKEN` before running any WSL setup. Paste a classic PAT that includes `repo` and `workflow` scopes for personal repositories; if the repo lives in an organization you administer, `admin:org` and administrator rights are required too. The helper will keep prompting until the token passes those checks, then automatically logs `gh` inside WSL with that token so the later GitHub hardening step never fails mid-run.
 
+> **No more “folder in use” restarts:** `sync-sandbox.ps1` now lists every shell/IDE/tool still holding `C:\dev\ai-dev-platform`, and (with your confirmation) closes them automatically so the helper can reset the repo without rebooting Windows. Prefer to close things yourself? Answer `n`, shut down the listed processes, and rerun the command—no more blind Windows restarts.
+
 Need a fresh fork for testing? Run this one-liner (requires a PAT with `delete_repo` scope) and it will delete the old fork, recreate it privately, reclone it, and sync it—all with a single command:
 
 ```powershell
