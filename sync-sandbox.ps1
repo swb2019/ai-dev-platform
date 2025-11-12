@@ -17,6 +17,72 @@ if ($originUrl -match 'github.com[:/](.+?)(\.git)?$') {
     throw "Sandbox repository remote could not be determined. Configure 'origin' before running the script."
 }
 
+function Get-ProcessesUsingPath {
+    param([string]$Path)
+    $results = @()
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $results
+    }
+    $normalized = ($Path -replace '/', '\\').TrimEnd('\\')
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return $results
+    }
+    $normalized = $normalized.ToLowerInvariant()
+    try {
+        $processes = Get-CimInstance -ClassName Win32_Process -ErrorAction Stop
+    } catch {
+        Write-Warning "Unable to enumerate running processes ($_)."
+        return $results
+    }
+
+    foreach ($proc in $processes) {
+        if ($proc.ProcessId -eq $PID) { continue }
+        $cmd = if ($proc.CommandLine) { $proc.CommandLine.ToLowerInvariant() } else { "" }
+        $exe = if ($proc.ExecutablePath) { $proc.ExecutablePath.ToLowerInvariant() } else { "" }
+        if (($cmd -and $cmd.Contains($normalized)) -or ($exe -and $exe.StartsWith($normalized))) {
+            $results += [pscustomobject]@{
+                Name        = $proc.Name
+                Id          = $proc.ProcessId
+                CommandLine = $proc.CommandLine
+            }
+        }
+    }
+    return $results
+}
+
+function Ensure-RepoDirectoryIsFree {
+    param([string]$Path)
+    $attempt = 0
+    while ($true) {
+        $lockers = Get-ProcessesUsingPath -Path $Path
+        if (-not $lockers -or $lockers.Count -eq 0) {
+            return
+        }
+
+        Write-Host ""; Write-Host "The following processes are using $Path:" -ForegroundColor Yellow
+        $lockers | Select-Object Name, Id, CommandLine | Format-Table -AutoSize | Out-String | Write-Host
+
+        $response = Read-Host "Close these processes automatically? [Y/n]"
+        if ($response -match '^[Nn]') {
+            throw "Cannot continue while processes are locking $Path. Close them manually and rerun."
+        }
+
+        foreach ($proc in $lockers) {
+            try {
+                Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+                Write-Host ("Stopped {0} (PID {1})." -f $proc.Name, $proc.Id) -ForegroundColor Yellow
+            } catch {
+                Write-Warning ("Unable to stop {0} (PID {1}): {2}" -f $proc.Name, $proc.Id, $_.Exception.Message)
+            }
+        }
+        Start-Sleep -Seconds 2
+        $attempt++
+        if ($attempt -ge 3) {
+            throw "Processes continue to use $Path after multiple attempts. Close them manually and rerun."
+        }
+    }
+}
+
 function Ensure-GitHubAuthentication {
     $statusOutput = try {
         & gh auth status --hostname github.com 2>&1
@@ -49,6 +115,7 @@ Push-Location $RepoDir
 try {
     Ensure-GitHubAuthentication
     Ensure-RepositoryExists
+    Ensure-RepoDirectoryIsFree -Path $RepoDir
 
     $upstreamUrl = "https://github.com/swb2019/ai-dev-platform.git"
     if (-not ((git remote | Select-String -Quiet "^upstream$"))) {
