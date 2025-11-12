@@ -175,26 +175,23 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -Fo
 > **GitHub token tip:** The Windows bootstrap now validates `GH_TOKEN` before running any WSL setup. Paste a classic PAT that includes `repo` and `workflow` scopes for personal repositories; if the repo lives in an organization you administer, `admin:org` and administrator rights are required too. The helper will keep prompting until the token passes those checks, then automatically logs `gh` inside WSL with that token so the later GitHub hardening step never fails mid-run.
 
 <<<<<<< HEAD
-> **No more “folder in use” restarts:** `sync-sandbox.ps1` now detects any shells, IDEs, or background tools that still have `C:\dev\ai-dev-platform` open. It shows you the offending processes and, with your approval, terminates them automatically so the directory can be cleaned without rebooting Windows. If you prefer to close them manually, answer `n` at the prompt and rerun the command once the list is clear.
-=======
+
 > **No more “folder in use” restarts:** `sync-sandbox.ps1` now lists every shell/IDE/tool still holding `C:\dev\ai-dev-platform`, and (with your confirmation) closes them automatically so the helper can reset the repo without rebooting Windows. Prefer to close things yourself? Answer `n`, shut down the listed processes, and rerun the command—no more blind Windows restarts.
->>>>>>> 2cb86e9 (feat(sync): auto-close processes locking repo dir)
 
 Need a fresh fork for testing? Run this script (requires a PAT with `delete_repo` scope) and it will delete the old fork, recreate it privately, reclone it, and sync it. Replace `your-user` with your GitHub handle:
 
 ```powershell
+Set-Location C:\dev\ai-dev-platform
 $Username = 'your-user'
 $ForkSlug = "$Username/ai-dev-platform-sandbox"
 gh auth refresh -h github.com -s delete_repo
-powershell -NoProfile -Command "& {
-  gh repo delete $using:ForkSlug --yes;
-  gh api -X POST repos/swb2019/ai-dev-platform/forks -f name=ai-dev-platform-sandbox -F private=true;
-  if (Test-Path C:\dev\ai-dev-platform) { Remove-Item -Recurse -Force C:\dev\ai-dev-platform }
-  git clone https://github.com/$using:ForkSlug.git C:\dev\ai-dev-platform;
-  Set-Location C:\dev\ai-dev-platform;
-  $env:AI_DEV_PLATFORM_SANDBOX_REPO = '$using:ForkSlug';
-  powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -ForceClean
-}"
+gh repo delete $ForkSlug --yes
+gh api -X POST repos/swb2019/ai-dev-platform/forks -f name=ai-dev-platform-sandbox -F private=true
+if (Test-Path C:\dev\ai-dev-platform) { Remove-Item -Recurse -Force C:\dev\ai-dev-platform }
+git clone "https://github.com/$ForkSlug.git" C:\dev\ai-dev-platform
+Set-Location C:\dev\ai-dev-platform
+$env:AI_DEV_PLATFORM_SANDBOX_REPO = $ForkSlug
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\sync-sandbox.ps1 -ForceClean
 ```
 
 Key safety switches (available on every run):
