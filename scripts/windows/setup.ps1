@@ -3101,16 +3101,6 @@ function Ensure-WslGithubAuthentication {
         return
     }
 
-    $lowerScopes = @()
-    foreach ($scope in $RequiredScopes) {
-        if (-not [string]::IsNullOrWhiteSpace($scope)) {
-            $lowerScopes += $scope.ToLowerInvariant()
-        }
-    }
-    if ($lowerScopes.Count -eq 0) {
-        $lowerScopes = @('repo','workflow')
-    }
-    $scopeLiteral = $lowerScopes -join ' '
     $repoLiteral = $RepoSlug
 
     $scriptTemplate = (@'
@@ -3150,33 +3140,6 @@ if ! gh auth status --hostname github.com >/dev/null 2>&1; then
   echo "GitHub CLI authentication verification failed even after writing hosts.yml." >&2
   exit 2
 fi
-scopes_line="$(gh auth status --hostname github.com 2>&1 | grep -im1 'scopes:' || true)"
-scope_blob="$(printf '%s' "$scopes_line" | cut -d':' -f2- | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
-normalized="$(printf '%s' "$scope_blob" | tr ',' ' ')"
-missing=""
-for required in __REQUIRED_SCOPES__; do
-  if [ -z "$required" ]; then
-    continue
-  fi
-  found=0
-  for entry in $normalized; do
-    if [ "$entry" = "$required" ]; then
-      found=1
-      break
-    fi
-  done
-  if [ $found -ne 1 ]; then
-    if [ -z "$missing" ]; then
-      missing="$required"
-    else
-      missing="$missing, $required"
-    fi
-  fi
-done
-if [ -n "$missing" ]; then
-  echo "GitHub CLI session in WSL is missing scope(s): $missing." >&2
-  exit 3
-fi
 if ! gh api "repos/__REPO_SLUG__" --jq '.permissions.admin' >/dev/null 2>&1; then
   echo "GitHub CLI authenticated user lacks administrator rights on __REPO_SLUG__." >&2
   exit 4
@@ -3184,7 +3147,7 @@ fi
 exit 0
 '@).TrimStart()
 
-    $script = $scriptTemplate.Replace('__REQUIRED_SCOPES__', $scopeLiteral).Replace('__REPO_SLUG__', $repoLiteral).Replace("`r","")
+    $script = $scriptTemplate.Replace('__REPO_SLUG__', $repoLiteral).Replace("`r","")
     $scriptBytes = [System.Text.Encoding]::UTF8.GetBytes($script)
     $scriptBase64 = [Convert]::ToBase64String($scriptBytes)
     $tmpScriptPath = "/tmp/ai-dev-gh-auth-$([Guid]::NewGuid().ToString('N')).sh"
